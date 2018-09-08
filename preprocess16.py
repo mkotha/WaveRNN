@@ -9,12 +9,13 @@
 # In[1]:
 
 
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 import math, pickle, os, glob
 import numpy as np
 import sys
 from utils import *
-from dsp import *
+from utils.dsp import *
+import os
 
 
 # In[2]:
@@ -30,8 +31,8 @@ notebook_name = 'nb4'
 # Point SEG_PATH to a folder containing your training wavs 
 # Doesn't matter if it's LJspeech, CMU Arctic etc. it should work fine
 SEG_PATH = sys.argv[1]
-DATA_PATH = f'data/{notebook_name}/'
-get_ipython().run_line_magic('mkdir', '-p $DATA_PATH')
+DATA_PATH = sys.argv[2]
+os.makedirs(DATA_PATH, exist_ok=True)
 
 
 # In[4]:
@@ -95,8 +96,8 @@ def convert_file(path) :
 
 QUANT_PATH = DATA_PATH + '/quant/'
 MEL_PATH = DATA_PATH + '/mel/'
-os.mkdir(QUANT_PATH)
-os.mkdir(MEL_PATH)
+os.makedirs(QUANT_PATH, exist_ok=True)
+os.makedirs(MEL_PATH, exist_ok=True)
 
 
 # In[ ]:
@@ -108,6 +109,7 @@ os.mkdir(MEL_PATH)
 # In[ ]:
 
 
+print("")
 # This will take a while depending on size of dataset
 dataset_ids = []
 for i, path in enumerate(wav_files) :
@@ -116,7 +118,7 @@ for i, path in enumerate(wav_files) :
     m, x = convert_file(path)
     np.save(f'{MEL_PATH}{id}.npy', m)
     np.save(f'{QUANT_PATH}{id}.npy', x)
-    display('%i/%i', (i + 1, len(wav_files)))
+    print("\r%i/%i", (i + 1, len(wav_files)), end='')
 
 
 # In[ ]:

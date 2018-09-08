@@ -1,5 +1,6 @@
 import numpy as np
 import librosa, math
+import scipy
 
 sample_rate = 22050
 n_fft = 2048
@@ -19,7 +20,8 @@ def load_wav(filename, encode=True) :
 def save_wav(y, filename) :
     if y.dtype != 'int16' :
         y = encode_16bits(y)
-    librosa.output.write_wav(filename, y.astype(np.int16), sample_rate)
+    #librosa.output.write_wav(filename, y.astype(np.int16), sample_rate)
+    scipy.io.wavfile.write(filename, sample_rate, y.astype(np.int16))
 
 def split_signal(x) :
     unsigned = x + 2**15
