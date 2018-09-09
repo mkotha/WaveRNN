@@ -322,7 +322,6 @@ def train(paths, model, dataset, optimiser, epochs, batch_size, seq_len, step, l
         trn_loader = DataLoader(dataset, collate_fn=collate, batch_size=batch_size,
                                 num_workers=2, shuffle=True, pin_memory=True)
 
-        val_loss = 0.
         start = time.time()
         running_loss_c = 0.
         running_loss_f = 0.
