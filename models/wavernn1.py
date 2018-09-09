@@ -16,17 +16,27 @@ bits = 16
 
 seq_len = hop_length * 5
 
-def model_path(name):
-    return f'model_checkpoints/{name}.pyt'
+class Paths:
+    def __init__(self, name, data_dir, checkpoint_dir="model_checkpoints", output_dir="model_outputs"):
+        self.name = name
+        self.data_dir = data_dir
+        self.checkpoint_dir = checkpoint_dir
+        self.output_dir = output_dir
 
-def model_hist_path(name, step):
-    return f'model_checkpoints/{name}_{step}.pyt'
+    def model_path(self):
+        return f'{self.checkpoint_dir}/{self.name}.pyt'
 
-def step_path(name):
-    return f'model_checkpoints/{name}_step.npy'
+    def model_hist_path(self, step):
+        return f'{self.checkpoint_dir}/{self.name}_{step}.pyt'
 
-def gen_path(name):
-    return f'model_outputs/{name}/'
+    def step_path(self):
+        return f'{self.checkpoint_dir}/{self.name}_step.npy'
+
+    def gen_path(self):
+        return f'{self.output_dir}/{self.name}/'
+
+def default_paths(name, data_dir):
+    return Paths(name, data_dir, checkpoint_dir="model_checkpoints", output_dir="model_outputs")
 
 class AudiobookDataset(Dataset):
     def __init__(self, ids, path):
@@ -293,7 +303,7 @@ class Model(nn.Module) :
         print('Trainable Parameters: %.3f million' % parameters)
 
 
-def train(name, model, dataset, optimiser, epochs, batch_size, seq_len, step, lr=1e-4) :
+def train(paths, model, dataset, optimiser, epochs, batch_size, seq_len, step, lr=1e-4) :
 
     for p in optimiser.param_groups : p['lr'] = lr
     criterion = nn.NLLLoss().cuda()
@@ -338,30 +348,30 @@ def train(name, model, dataset, optimiser, epochs, batch_size, seq_len, step, lr
             k = step // 1000
             print(f'\rEpoch: {e+1}/{epochs} -- Batch: {i+1}/{iters} -- Loss: c={avg_loss_c:#.4} f={avg_loss_f:#.4} -- Speed: {speed:#.4} steps/sec -- Step: {k}k ', end='')
 
-        torch.save(model.state_dict(), model_path(name))
-        np.save(step_path(name), step)
+        torch.save(model.state_dict(), paths.model_path())
+        np.save(paths.step_path(), step)
         print(f'\n <saved>; w[0][0] = {model.rnn.weight_ih_l0[0][0]}')
         if k > saved_k + 50:
-            torch.save(model.state_dict(), model_hist_path(name, step))
+            torch.save(model.state_dict(), paths.model_hist_path(step))
             saved_k = k
 
-def generate(name, model, step, data_path, test_ids, samples=3) :
+def generate(paths, model, step, data_path, test_ids, samples=3) :
     global output
     k = step // 1000
     test_mels = [np.load(f'{data_path}/mel/{id}.npy') for id in test_ids[:samples]]
     ground_truth = [np.load(f'{data_path}/quant/{id}.npy') for id in test_ids[:samples]]
-    os.makedirs(gen_path(name), exist_ok=True)
+    os.makedirs(paths.gen_path(), exist_ok=True)
     for i, (gt, mel) in enumerate(zip(ground_truth, test_mels)) :
         print('\nGenerating: %i/%i' % (i+1, samples))
         gt = 2 * gt.astype(np.float32) / (2**bits - 1.) - 1.
-        librosa.output.write_wav(f'{gen_path(name)}/{k}k_steps_{i}_target.wav', gt, sr=sample_rate)
-        output = model.generate(mel, f'{gen_path(name)}/{k}k_steps_{i}_generated.wav')
+        librosa.output.write_wav(f'{paths.gen_path()}/{k}k_steps_{i}_target.wav', gt, sr=sample_rate)
+        output = model.generate(mel, f'{paths.gen_path()}/{k}k_steps_{i}_generated.wav')
 
-def try_restore(name, model):
-    if not os.path.exists(model_path(name)):
-        torch.save(model.state_dict(), model_path(name))
-    model.load_state_dict(torch.load(model_path(name)))
+def try_restore(paths, model):
+    if not os.path.exists(paths.model_path()):
+        torch.save(model.state_dict(), paths.model_path())
+    model.load_state_dict(torch.load(paths.model_path()))
 
-    if not os.path.exists(step_path(name)):
-        np.save(step_path(name), 0)
-    return np.load(step_path(name))
+    if not os.path.exists(paths.step_path()):
+        np.save(paths.step_path(), 0)
+    return np.load(paths.step_path())

@@ -21,6 +21,8 @@ seq_len = hop_length * 5
 model_name = 'wavernn.1.lj'
 DATA_PATH = '/mnt/backup/dataset/lj-16bit'
 
+paths = wr.Paths(model_name, DATA_PATH, checkpoint_dir='remote-checkpoints/a')
+
 #DATA_PATH = sys.argv[1]
 
 
@@ -42,13 +44,12 @@ model = wr.Model(rnn_dims=896, fc_dims=896, pad=2,
               compute_dims=128, res_out_dims=128, res_blocks=10).cuda()
 
 
-global step
-step = wr.try_restore(model_name, model)
+step = wr.try_restore(paths, model)
 
 optimiser = optim.Adam(model.parameters())
 
 
-wr.train(model_name, model, dataset, optimiser, epochs=1000, batch_size=16, seq_len=seq_len, step=step, lr=1e-4)
-#wr.train(model_name, model, dataset, optimiser, epochs=100, batch_size=2, seq_len=seq_len, step=step, lr=1e-4)
+#wr.train(paths, model, dataset, optimiser, epochs=1000, batch_size=16, seq_len=seq_len, step=step, lr=1e-4)
+#wr.train(paths, model, dataset, optimiser, epochs=100, batch_size=2, seq_len=seq_len, step=step, lr=1e-4)
 
-wr.generate(model_name, model, step, DATA_PATH, test_ids)
+wr.generate(paths, model, step, DATA_PATH, test_ids)
