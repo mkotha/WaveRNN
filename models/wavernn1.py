@@ -214,7 +214,7 @@ class Model(nn.Module) :
         o_c = F.relu(self.fc1(torch.cat([h_c, a2], dim=2)))
         p_c = F.log_softmax(self.fc2(o_c), dim=2)
 
-        o_f = F.relu(self.fc3(torch.cat([h_c, a3], dim=2)))
+        o_f = F.relu(self.fc3(torch.cat([h_f, a3], dim=2)))
         p_f = F.log_softmax(self.fc4(o_f), dim=2)
 
         return (p_c, p_f)
