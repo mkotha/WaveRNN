@@ -262,8 +262,11 @@ class Model(nn.Module) :
                 h_c, _ = torch.split(h_0, self.half_rnn_dims, dim=1)
 
                 o_c = F.relu(self.fc1(torch.cat([h_c, a2_t], dim=1)))
-                c_cat = torch.argmax(self.fc2(o_c), dim=1).to(torch.float32)
-                c_val_new = c_cat[0] / 127.5 - 1.0
+                posterior_c = F.softmax(self.fc2(o_c), dim=1)
+                distrib_c = torch.distributions.Categorical(posterior_c)
+                c_cat = distrib_c.sample().float().item()
+                #c_cat = torch.argmax(self.fc2(o_c), dim=1).to(torch.float32)[0]
+                c_val_new = c_cat / 127.5 - 1.0
 
                 x = torch.FloatTensor([[c_val, f_val, c_val_new]]).cuda()
 
@@ -273,18 +276,22 @@ class Model(nn.Module) :
                 _, h_f = torch.split(h, self.half_rnn_dims, dim=1)
 
                 o_f = F.relu(self.fc3(torch.cat([h_f, a3_t], dim=1)))
-                f_cat = torch.argmax(self.fc4(o_f), dim=1).to(torch.float32)
-                f_val = f_cat[0] / 127.5 - 1.0
+                posterior_f = F.softmax(self.fc4(o_f), dim=1)
+                distrib_f = torch.distributions.Categorical(posterior_f)
+                f_cat = distrib_f.sample().float().item()
+                #f_cat = torch.argmax(self.fc4(o_f), dim=1).to(torch.float32)[0]
+                f_val = f_cat / 127.5 - 1.0
 
                 c_val = c_val_new
 
-                sample = (c_cat[0] * 256 + f_cat[0]) / 32767.5 - 1.0
-                print(f'c={c_cat[0]} f={f_cat[0]} sample={sample}')
+                sample = (c_cat * 256 + f_cat) / 32767.5 - 1.0
+                if i % 10000 < 100:
+                    print(f'c={c_cat} f={f_cat} sample={sample}')
                 output.append(sample)
                 if i % 100 == 0 :
                     speed = int((i + 1) / (time.time() - start))
                     print(f'\r{i+1}/{seq_len} -- Speed: {speed} samples/sec', end='')
-        output = torch.stack(output).cpu().numpy()
+        output = np.array(output).astype(np.float32)
         librosa.output.write_wav(save_path, output, sample_rate)
         self.train()
         return output
