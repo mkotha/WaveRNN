@@ -21,8 +21,8 @@ seq_len = hop_length * 5
 model_name = 'wavernn.2.lj'
 DATA_PATH = '/mnt/backup/dataset/lj-16bit'
 
-#paths = wr.Paths(model_name, DATA_PATH, checkpoint_dir='remote-checkpoints/a', output_dir='deterministic')
-paths = wr.Paths(model_name, DATA_PATH)
+paths = wr.Paths(model_name, DATA_PATH, checkpoint_dir='remote-checkpoints/a')#, output_dir='deterministic')
+#paths = wr.Paths(model_name, DATA_PATH)
 
 #DATA_PATH = sys.argv[1]
 
@@ -50,7 +50,7 @@ step = wr.try_restore(paths, model)
 optimiser = optim.Adam(model.parameters())
 
 
-wr.train(paths, model, dataset, optimiser, epochs=1000, batch_size=16, seq_len=seq_len, step=step, lr=1e-5)
+#wr.train(paths, model, dataset, optimiser, epochs=1000, batch_size=16, seq_len=seq_len, step=step, lr=1e-4)
 #wr.train(paths, model, dataset, optimiser, epochs=100, batch_size=2, seq_len=seq_len, step=step, lr=1e-4)
 
-wr.generate(paths, model, step, DATA_PATH, test_ids)
+wr.generate(paths, model, step, DATA_PATH, test_ids)#, deterministic=True)

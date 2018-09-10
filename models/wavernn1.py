@@ -227,7 +227,7 @@ class Model(nn.Module) :
         mels, aux = self.upsample(mels)
         return mels, aux
 
-    def generate(self, mels, save_path) :
+    def generate(self, mels, save_path, deterministic=False) :
         self.eval()
         output = []
         rnn_cell = self.get_gru_cell(self.rnn)
@@ -262,10 +262,12 @@ class Model(nn.Module) :
                 h_c, _ = torch.split(h_0, self.half_rnn_dims, dim=1)
 
                 o_c = F.relu(self.fc1(torch.cat([h_c, a2_t], dim=1)))
-                posterior_c = F.softmax(self.fc2(o_c), dim=1)
-                distrib_c = torch.distributions.Categorical(posterior_c)
-                c_cat = distrib_c.sample().float().item()
-                #c_cat = torch.argmax(self.fc2(o_c), dim=1).to(torch.float32)[0]
+                if deterministic:
+                    c_cat = torch.argmax(self.fc2(o_c), dim=1).to(torch.float32)[0]
+                else:
+                    posterior_c = F.softmax(self.fc2(o_c), dim=1)
+                    distrib_c = torch.distributions.Categorical(posterior_c)
+                    c_cat = distrib_c.sample().float().item()
                 c_val_new = c_cat / 127.5 - 1.0
 
                 x = torch.FloatTensor([[c_val, f_val, c_val_new]]).cuda()
@@ -276,10 +278,12 @@ class Model(nn.Module) :
                 _, h_f = torch.split(h, self.half_rnn_dims, dim=1)
 
                 o_f = F.relu(self.fc3(torch.cat([h_f, a3_t], dim=1)))
-                posterior_f = F.softmax(self.fc4(o_f), dim=1)
-                distrib_f = torch.distributions.Categorical(posterior_f)
-                f_cat = distrib_f.sample().float().item()
-                #f_cat = torch.argmax(self.fc4(o_f), dim=1).to(torch.float32)[0]
+                if deterministic:
+                    f_cat = torch.argmax(self.fc4(o_f), dim=1).to(torch.float32)[0]
+                else:
+                    posterior_f = F.softmax(self.fc4(o_f), dim=1)
+                    distrib_f = torch.distributions.Categorical(posterior_f)
+                    f_cat = distrib_f.sample().float().item()
                 f_val = f_cat / 127.5 - 1.0
 
                 c_val = c_val_new
@@ -361,7 +365,7 @@ def train(paths, model, dataset, optimiser, epochs, batch_size, seq_len, step, l
             torch.save(model.state_dict(), paths.model_hist_path(step))
             saved_k = k
 
-def generate(paths, model, step, data_path, test_ids, samples=3) :
+def generate(paths, model, step, data_path, test_ids, samples=3, deterministic=False) :
     global output
     k = step // 1000
     test_mels = [np.load(f'{data_path}/mel/{id}.npy') for id in test_ids[:samples]]
@@ -371,7 +375,7 @@ def generate(paths, model, step, data_path, test_ids, samples=3) :
         print('\nGenerating: %i/%i' % (i+1, samples))
         gt = 2 * gt.astype(np.float32) / (2**bits - 1.) - 1.
         librosa.output.write_wav(f'{paths.gen_path()}/{k}k_steps_{i}_target.wav', gt, sr=sample_rate)
-        output = model.generate(mel, f'{paths.gen_path()}/{k}k_steps_{i}_generated.wav')
+        output = model.generate(mel, f'{paths.gen_path()}/{k}k_steps_{i}_generated.wav', deterministic)
 
 def try_restore(paths, model):
     if not os.path.exists(paths.model_path()):
