@@ -10,6 +10,7 @@ from utils import *
 from utils.dsp import *
 import sys
 import time
+import apex
 
 
 bits = 16
@@ -198,8 +199,10 @@ class Model(nn.Module) :
         self.num_params()
 
     def forward(self, x, mels) :
+        #print(f'x: {x.var()} mels: {mels.var()}')
         mels, aux = self.upsample(mels)
 
+        #print(f'aux: {aux.var()} mels: {mels.var()}')
         aux_idx = [self.aux_dims * i for i in range(5)]
         a1 = aux[:, :, aux_idx[0]:aux_idx[1]]
         a2 = aux[:, :, aux_idx[1]:aux_idx[2]]
@@ -208,14 +211,17 @@ class Model(nn.Module) :
         #print(f'mels: {mels.size()}, a1: {a1.size()}, x: {x.size()}')
         x = torch.cat([mels, a1, x], dim=2)
         h, _ = self.rnn(x)
+        #print(f'h: {h.var()}')
 
         h_c, h_f = torch.split(h, self.half_rnn_dims, dim=2)
 
         o_c = F.relu(self.fc1(torch.cat([h_c, a2], dim=2)))
         p_c = F.log_softmax(self.fc2(o_c), dim=2)
+        #print(f'o_c: {o_c.var()} p_c: {p_c.var()}')
 
         o_f = F.relu(self.fc3(torch.cat([h_f, a3], dim=2)))
         p_f = F.log_softmax(self.fc4(o_f), dim=2)
+        #print(f'o_f: {o_f.var()} p_f: {p_f.var()}')
 
         return (p_c, p_f)
 
@@ -316,6 +322,7 @@ class Model(nn.Module) :
 
 def train(paths, model, dataset, optimiser, epochs, batch_size, seq_len, step, lr=1e-4) :
 
+    optimiser = apex.fp16_utils.FP16_Optimizer(optimiser)
     for p in optimiser.param_groups : p['lr'] = lr
     criterion = nn.NLLLoss().cuda()
     k = 0
@@ -338,12 +345,16 @@ def train(paths, model, dataset, optimiser, epochs, batch_size, seq_len, step, l
 
             p_c, p_f = model(x, m)
             #print(f'p_c: {p_c.size()}, p_f: {p_f.size()}, y_coarse: {y_coarse.size()}')
-            loss_c = criterion(p_c.transpose(1, 2), y_coarse)
-            loss_f = criterion(p_f.transpose(1, 2), y_fine)
+            #print(f'p_c: {p_c}')
+            #print(f'p_f: {p_f}')
+            loss_c = criterion(p_c.transpose(1, 2).float(), y_coarse)
+            loss_f = criterion(p_f.transpose(1, 2).float(), y_fine)
             loss = loss_c + loss_f
+            #print(f'loss_c: {loss_c} loss_f: {loss_f} loss: {loss}')
 
             optimiser.zero_grad()
-            loss.backward()
+            #loss.backward()
+            optimiser.backward(loss)
             optimiser.step()
             running_loss_c += loss_c.item()
             running_loss_f += loss_f.item()
