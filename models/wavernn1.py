@@ -195,7 +195,7 @@ class Model(nn.Module) :
 
         coarse_mask = torch.cat([torch.ones(self.half_rnn_dims, feat_dims + self.aux_dims + 2), torch.zeros(self.half_rnn_dims, 1)], dim=1)
         i2h_mask = torch.cat([coarse_mask, torch.ones(self.half_rnn_dims, feat_dims + self.aux_dims + 3)], dim=0)
-        self.mask = torch.cat([i2h_mask, i2h_mask, i2h_mask], dim=0).cuda()
+        self.mask = torch.cat([i2h_mask, i2h_mask, i2h_mask], dim=0).cuda().half()
         self.num_params()
 
     def forward(self, x, mels) :
@@ -341,7 +341,7 @@ def train(paths, model, dataset, optimiser, epochs, batch_size, seq_len, step, l
 
         for i, (x, m, y_coarse, y_fine) in enumerate(trn_loader) :
 
-            x, m, y_coarse, y_fine = x.cuda(), m.cuda(), y_coarse.cuda(), y_fine.cuda()
+            x, m, y_coarse, y_fine = x.cuda().half(), m.cuda().half(), y_coarse.cuda(), y_fine.cuda()
 
             p_c, p_f = model(x, m)
             #print(f'p_c: {p_c.size()}, p_f: {p_f.size()}, y_coarse: {y_coarse.size()}')

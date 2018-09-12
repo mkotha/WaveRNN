@@ -43,7 +43,7 @@ print(f'dataset size: {len(dataset)}')
 
 model = wr.Model(rnn_dims=896, fc_dims=896, pad=2,
               upsample_factors=(5, 5, 11), feat_dims=80,
-              compute_dims=128, res_out_dims=128, res_blocks=10).cuda()
+              compute_dims=128, res_out_dims=128, res_blocks=10).cuda().half()
 
 
 step = wr.try_restore(paths, model)
