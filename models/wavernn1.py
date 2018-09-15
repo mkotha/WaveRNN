@@ -88,127 +88,53 @@ def collate(batch) :
 
 
 
-class ResBlock(nn.Module) :
-    def __init__(self, dims) :
-        super().__init__()
-        self.conv1 = nn.Conv1d(dims, dims, kernel_size=1, bias=False)
-        self.conv2 = nn.Conv1d(dims, dims, kernel_size=1, bias=False)
-        self.batch_norm1 = nn.BatchNorm1d(dims)
-        self.batch_norm2 = nn.BatchNorm1d(dims)
-
-    def forward(self, x) :
-        residual = x
-        x = self.conv1(x)
-        x = self.batch_norm1(x)
-        x = F.relu(x)
-        x = self.conv2(x)
-        x = self.batch_norm2(x)
-        return x + residual
-
-
-# In[18]:
-
-
-class MelResNet(nn.Module) :
-    def __init__(self, res_blocks, in_dims, compute_dims, res_out_dims) :
-        super().__init__()
-        self.conv_in = nn.Conv1d(in_dims, compute_dims, kernel_size=5, bias=False)
-        self.batch_norm = nn.BatchNorm1d(compute_dims)
-        self.layers = nn.ModuleList()
-        for i in range(res_blocks) :
-            self.layers.append(ResBlock(compute_dims))
-        self.conv_out = nn.Conv1d(compute_dims, res_out_dims, kernel_size=1)
-
-    def forward(self, x) :
-        x = self.conv_in(x)
-        x = self.batch_norm(x)
-        x = F.relu(x)
-        for f in self.layers : x = f(x)
-        x = self.conv_out(x)
-        return x
-
-
-# In[16]:
-
-
-class Stretch2d(nn.Module) :
-    def __init__(self, x_scale, y_scale) :
-        super().__init__()
-        self.x_scale = x_scale
-        self.y_scale = y_scale
-
-    def forward(self, x) :
-        b, c, h, w = x.size()
-        x = x.unsqueeze(-1).unsqueeze(3)
-        x = x.repeat(1, 1, 1, self.y_scale, 1, self.x_scale)
-        return x.view(b, c, h * self.y_scale, w * self.x_scale)
-
-
-# In[19]:
-
-
 class UpsampleNetwork(nn.Module) :
-    def __init__(self, feat_dims, upsample_scales, compute_dims,
-                 res_blocks, res_out_dims, pad) :
+    def __init__(self, feat_dims, out_dims, upsample_scales):
         super().__init__()
-        total_scale = np.cumproduct(upsample_scales)[-1]
-        self.indent = pad * total_scale
-        self.resnet = MelResNet(res_blocks, feat_dims, compute_dims, res_out_dims)
-        self.resnet_stretch = Stretch2d(total_scale, 1)
         self.up_layers = nn.ModuleList()
-        for scale in upsample_scales :
-            k_size = (1, scale * 2 + 1)
-            padding = (0, scale)
-            stretch = Stretch2d(scale, 1)
-            conv = nn.Conv2d(1, 1, kernel_size=k_size, padding=padding, bias=False)
-            conv.weight.data.fill_(1. / k_size[1])
-            self.up_layers.append(stretch)
+        in_channels = feat_dims
+        for scale in upsample_scales:
+            if scale % 2 != 1:
+                raise RuntimeError(f"upsample scale must be odd: {scale}")
+            conv = nn.ConvTranspose1d(in_channels, out_dims,
+                    kernel_size = 2 * scale + 1,
+                    stride = scale,
+                    padding = (3 * scale - 1) // 2)
+            in_channels = out_dims
             self.up_layers.append(conv)
 
-    def forward(self, m) :
-        aux = self.resnet(m).unsqueeze(1)
-        aux = self.resnet_stretch(aux)
-        aux = aux.squeeze(1)
-        m = m.unsqueeze(1)
-        for f in self.up_layers : m = f(m)
-        m = m.squeeze(1)[:, :, self.indent:-self.indent]
-        return m.transpose(1, 2), aux.transpose(1, 2)
-
+    def forward(self, mels):
+        x = mels
+        for up in self.up_layers:
+            x = F.relu(up(x))
+        return x[:, :, 1:-1]
 
 # In[20]:
 
 
 class Model(nn.Module) :
     def __init__(self, rnn_dims, fc_dims, pad, upsample_factors,
-                 feat_dims, compute_dims, res_out_dims, res_blocks):
+                 feat_dims, cond_dims):
         super().__init__()
         self.n_classes = 256
         self.rnn_dims = rnn_dims
-        self.aux_dims = res_out_dims // 3
-        self.upsample = UpsampleNetwork(feat_dims, upsample_factors, compute_dims,
-                                        res_blocks, res_out_dims, pad)
-        self.wavernn = WaveRNN(rnn_dims, fc_dims, feat_dims, self.aux_dims)
+        self.cond_dims = cond_dims
+        self.excess_pad = pad - 1
+        self.upsample = UpsampleNetwork(feat_dims, cond_dims, upsample_factors)
+        self.wavernn = WaveRNN(rnn_dims, fc_dims, cond_dims, 0)
         self.num_params()
 
     def forward(self, x, mels) :
-        #print(f'x: {x.var()} mels: {mels.var()}')
-        mels, aux = self.upsample(mels)
-
-        #print(f'aux: {aux.var()} mels: {mels.var()}')
-        aux_idx = [self.aux_dims * i for i in range(5)]
-        a1 = aux[:, :, aux_idx[0]:aux_idx[1]]
-        a2 = aux[:, :, aux_idx[1]:aux_idx[2]]
-        a3 = aux[:, :, aux_idx[2]:aux_idx[3]]
-
-        #print(f'mels: {mels.size()}, a1: {a1.size()}, x: {x.size()}')
-        return self.wavernn(x, mels, a1, a2, a3)
+        #print(f'x: {x.size()} mels: {mels.size()}')
+        cond = self.upsample(mels[:, :, self.excess_pad:-self.excess_pad]).transpose(1, 2)
+        #print(f'cond: {cond.size()}')
+        return self.wavernn(x, cond, None, None, None)
 
     def after_update(self):
         self.wavernn.after_update()
 
     def preview_upsampling(self, mels) :
-        mels, aux = self.upsample(mels)
-        return mels, aux
+        return self.upsample(mels)
 
     def generate(self, mels, save_path, deterministic=False) :
         self.eval()
@@ -219,26 +145,18 @@ class Model(nn.Module) :
             h = torch.zeros(1, self.rnn_dims).cuda()
 
             mels = torch.FloatTensor(mels).cuda().unsqueeze(0)
-            mels, aux = self.upsample(mels)
+            cond = self.upsample(mels[:, :, self.excess_pad:-self.excess_pad]).transpose(1, 2)
 
-            aux_idx = [self.aux_dims * i for i in range(5)]
-            a1 = aux[:, :, aux_idx[0]:aux_idx[1]]
-            a2 = aux[:, :, aux_idx[1]:aux_idx[2]]
-            a3 = aux[:, :, aux_idx[2]:aux_idx[3]]
-
-            seq_len = mels.size(1)
+            seq_len = cond.size(1)
 
             c_val = 0.0
             f_val = 0.0
 
             for i in range(seq_len) :
-                m_t = mels[:, i, :]
-                a1_t = a1[:, i, :]
-                a2_t = a2[:, i, :]
-                a3_t = a3[:, i, :]
+                m_t = cond[:, i, :]
 
                 x = torch.FloatTensor([[c_val, f_val, 0]]).cuda()
-                o_c = rnn_cell.forward_c(x, m_t, a1_t, a2_t, h)
+                o_c = rnn_cell.forward_c(x, m_t, None, None, h)
                 if deterministic:
                     c_cat = torch.argmax(o_c, dim=1).to(torch.float32)[0]
                 else:
@@ -248,7 +166,7 @@ class Model(nn.Module) :
                 c_val_new = c_cat / 127.5 - 1.0
 
                 x = torch.FloatTensor([[c_val, f_val, c_val_new]]).cuda()
-                o_f, h = rnn_cell.forward_f(x, m_t, a1_t, a3_t, h)
+                o_f, h = rnn_cell.forward_f(x, m_t, None, None, h)
                 if deterministic:
                     f_cat = torch.argmax(o_f, dim=1).to(torch.float32)[0]
                 else:

@@ -18,7 +18,7 @@ seq_len = hop_length * 5
 #model_name = 'wavernn.0.sine'
 #DATA_PATH = 'sinepp'
 
-model_name = 'wavernn.4.lj.f16'
+model_name = 'wavernn.5.lj.tconv'
 DATA_PATH = '/mnt/backup/dataset/lj-16bit'
 #DATA_PATH = 'mepp16'
 
@@ -42,8 +42,7 @@ dataset = wr.AudiobookDataset(dataset_ids, DATA_PATH)
 print(f'dataset size: {len(dataset)}')
 
 model = wr.Model(rnn_dims=896, fc_dims=896, pad=2,
-              upsample_factors=(5, 5, 11), feat_dims=80,
-              compute_dims=128, res_out_dims=128, res_blocks=10).cuda().half()
+              upsample_factors=(5, 5, 11), feat_dims=80, cond_dims=64).cuda().half()
 
 
 step = wr.try_restore(paths, model)

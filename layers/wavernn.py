@@ -2,6 +2,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+def filter_none(xs):
+    return [x for x in xs if x is not None]
+
 class WaveRNN(nn.Module) :
     def __init__(self, rnn_dims, fc_dims, feat_dims, aux_dims):
         super().__init__()
@@ -20,16 +23,16 @@ class WaveRNN(nn.Module) :
         self.mask = torch.cat([i2h_mask, i2h_mask, i2h_mask], dim=0).cuda().half()
 
     def forward(self, x, feat, aux1, aux2, aux3) :
-        x = torch.cat([feat, aux1, x], dim=2)
+        x = torch.cat(filter_none([feat, aux1, x]), dim=2)
         h, _ = self.gru(x)
 
         h_c, h_f = torch.split(h, self.half_rnn_dims, dim=2)
 
-        o_c = F.relu(self.fc1(torch.cat([h_c, aux2], dim=2)))
+        o_c = F.relu(self.fc1(torch.cat(filter_none([h_c, aux2]), dim=2)))
         p_c = F.log_softmax(self.fc2(o_c), dim=2)
         #print(f'o_c: {o_c.var()} p_c: {p_c.var()}')
 
-        o_f = F.relu(self.fc3(torch.cat([h_f, aux3], dim=2)))
+        o_f = F.relu(self.fc3(torch.cat(filter_none([h_f, aux3]), dim=2)))
         p_f = F.log_softmax(self.fc4(o_f), dim=2)
         #print(f'o_f: {o_f.var()} p_f: {p_f.var()}')
 
@@ -60,12 +63,12 @@ class WaveRNNCell(nn.Module):
 
     def forward_c(self, x, feat, aux1, aux2, h):
         # print(f'x: {x.size()}, feat: {feat.size()}, aux1: {aux1.size()}')
-        h_0 = self.gru_cell(torch.cat([feat, aux1, x], dim=1), h)
+        h_0 = self.gru_cell(torch.cat(filter_none([feat, aux1, x]), dim=1), h)
         h_c, _ = torch.split(h_0, self.half_rnn_dims, dim=1)
-        return self.fc2(F.relu(self.fc1(torch.cat([h_c, aux2], dim=1))))
+        return self.fc2(F.relu(self.fc1(torch.cat(filter_none([h_c, aux2]), dim=1))))
 
     def forward_f(self, x, feat, aux1, aux3, h):
-        h_1 = self.gru_cell(torch.cat([feat, aux1, x], dim=1), h)
+        h_1 = self.gru_cell(torch.cat(filter_none([feat, aux1, x]), dim=1), h)
         _, h_f = torch.split(h_1, self.half_rnn_dims, dim=1)
-        o_f = self.fc4(F.relu(self.fc3(torch.cat([h_f, aux3], dim=1))))
+        o_f = self.fc4(F.relu(self.fc3(torch.cat(filter_none([h_f, aux3]), dim=1))))
         return (o_f, h_1)
