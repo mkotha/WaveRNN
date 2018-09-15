@@ -11,6 +11,7 @@ from utils.dsp import *
 import sys
 import time
 import apex
+from layers.wavernn import WaveRNN
 
 
 bits = 16
@@ -184,18 +185,9 @@ class Model(nn.Module) :
         self.n_classes = 256
         self.rnn_dims = rnn_dims
         self.aux_dims = res_out_dims // 3
-        self.half_rnn_dims = rnn_dims // 2
         self.upsample = UpsampleNetwork(feat_dims, upsample_factors, compute_dims,
                                         res_blocks, res_out_dims, pad)
-        self.rnn = nn.GRU(feat_dims + self.aux_dims + 3, rnn_dims, batch_first=True)
-        self.fc1 = nn.Linear(self.half_rnn_dims + self.aux_dims, fc_dims)
-        self.fc2 = nn.Linear(fc_dims, self.n_classes)
-        self.fc3 = nn.Linear(self.half_rnn_dims + self.aux_dims, fc_dims)
-        self.fc4 = nn.Linear(fc_dims, self.n_classes)
-
-        coarse_mask = torch.cat([torch.ones(self.half_rnn_dims, feat_dims + self.aux_dims + 2), torch.zeros(self.half_rnn_dims, 1)], dim=1)
-        i2h_mask = torch.cat([coarse_mask, torch.ones(self.half_rnn_dims, feat_dims + self.aux_dims + 3)], dim=0)
-        self.mask = torch.cat([i2h_mask, i2h_mask, i2h_mask], dim=0).cuda().half()
+        self.wavernn = WaveRNN(rnn_dims, fc_dims, feat_dims, self.aux_dims)
         self.num_params()
 
     def forward(self, x, mels) :
@@ -209,25 +201,10 @@ class Model(nn.Module) :
         a3 = aux[:, :, aux_idx[2]:aux_idx[3]]
 
         #print(f'mels: {mels.size()}, a1: {a1.size()}, x: {x.size()}')
-        x = torch.cat([mels, a1, x], dim=2)
-        h, _ = self.rnn(x)
-        #print(f'h: {h.var()}')
-
-        h_c, h_f = torch.split(h, self.half_rnn_dims, dim=2)
-
-        o_c = F.relu(self.fc1(torch.cat([h_c, a2], dim=2)))
-        p_c = F.log_softmax(self.fc2(o_c), dim=2)
-        #print(f'o_c: {o_c.var()} p_c: {p_c.var()}')
-
-        o_f = F.relu(self.fc3(torch.cat([h_f, a3], dim=2)))
-        p_f = F.log_softmax(self.fc4(o_f), dim=2)
-        #print(f'o_f: {o_f.var()} p_f: {p_f.var()}')
-
-        return (p_c, p_f)
+        return self.wavernn(x, mels, a1, a2, a3)
 
     def after_update(self):
-        with torch.no_grad():
-            torch.mul(self.rnn.weight_ih_l0.data, self.mask, out=self.rnn.weight_ih_l0.data)
+        self.wavernn.after_update()
 
     def preview_upsampling(self, mels) :
         mels, aux = self.upsample(mels)
@@ -236,7 +213,7 @@ class Model(nn.Module) :
     def generate(self, mels, save_path, deterministic=False) :
         self.eval()
         output = []
-        rnn_cell = self.get_gru_cell(self.rnn)
+        rnn_cell = self.wavernn.to_cell()
         with torch.no_grad() :
             start = time.time()
             h = torch.zeros(1, self.rnn_dims).cuda()
@@ -261,33 +238,21 @@ class Model(nn.Module) :
                 a3_t = a3[:, i, :]
 
                 x = torch.FloatTensor([[c_val, f_val, 0]]).cuda()
-
-                x = torch.cat([m_t, a1_t, x], dim=1)
-                h_0 = rnn_cell(x, h)
-
-                h_c, _ = torch.split(h_0, self.half_rnn_dims, dim=1)
-
-                o_c = F.relu(self.fc1(torch.cat([h_c, a2_t], dim=1)))
+                o_c = rnn_cell.forward_c(x, m_t, a1_t, a2_t, h)
                 if deterministic:
-                    c_cat = torch.argmax(self.fc2(o_c), dim=1).to(torch.float32)[0]
+                    c_cat = torch.argmax(o_c, dim=1).to(torch.float32)[0]
                 else:
-                    posterior_c = F.softmax(self.fc2(o_c), dim=1)
+                    posterior_c = F.softmax(o_c, dim=1)
                     distrib_c = torch.distributions.Categorical(posterior_c)
                     c_cat = distrib_c.sample().float().item()
                 c_val_new = c_cat / 127.5 - 1.0
 
                 x = torch.FloatTensor([[c_val, f_val, c_val_new]]).cuda()
-
-                x = torch.cat([m_t, a1_t, x], dim=1)
-                h = rnn_cell(x, h)
-
-                _, h_f = torch.split(h, self.half_rnn_dims, dim=1)
-
-                o_f = F.relu(self.fc3(torch.cat([h_f, a3_t], dim=1)))
+                o_f, h = rnn_cell.forward_f(x, m_t, a1_t, a3_t, h)
                 if deterministic:
-                    f_cat = torch.argmax(self.fc4(o_f), dim=1).to(torch.float32)[0]
+                    f_cat = torch.argmax(o_f, dim=1).to(torch.float32)[0]
                 else:
-                    posterior_f = F.softmax(self.fc4(o_f), dim=1)
+                    posterior_f = F.softmax(o_f, dim=1)
                     distrib_f = torch.distributions.Categorical(posterior_f)
                     f_cat = distrib_f.sample().float().item()
                 f_val = f_cat / 127.5 - 1.0
@@ -305,14 +270,6 @@ class Model(nn.Module) :
         librosa.output.write_wav(save_path, output, sample_rate)
         self.train()
         return output
-
-    def get_gru_cell(self, gru) :
-        gru_cell = nn.GRUCell(gru.input_size, gru.hidden_size)
-        gru_cell.weight_hh.data = gru.weight_hh_l0.data
-        gru_cell.weight_ih.data = gru.weight_ih_l0.data
-        gru_cell.bias_hh.data = gru.bias_hh_l0.data
-        gru_cell.bias_ih.data = gru.bias_ih_l0.data
-        return gru_cell
 
     def num_params(self) :
         parameters = filter(lambda p: p.requires_grad, self.parameters())
@@ -371,7 +328,7 @@ def train(paths, model, dataset, optimiser, epochs, batch_size, seq_len, step, l
 
         torch.save(model.state_dict(), paths.model_path())
         np.save(paths.step_path(), step)
-        print(f'\n <saved>; w[0][0] = {model.rnn.weight_ih_l0[0][0]}')
+        print(f'\n <saved>; w[0][0] = {model.wavernn.gru.weight_ih_l0[0][0]}')
         if k > saved_k + 50:
             torch.save(model.state_dict(), paths.model_hist_path(step))
             saved_k = k
@@ -388,10 +345,33 @@ def generate(paths, model, step, data_path, test_ids, samples=3, deterministic=F
         librosa.output.write_wav(f'{paths.gen_path()}/{k}k_steps_{i}_target.wav', gt, sr=sample_rate)
         output = model.generate(mel, f'{paths.gen_path()}/{k}k_steps_{i}_generated.wav', deterministic)
 
+UPGRADE_KEY = {
+        "rnn.weight_ih_l0": "wavernn.gru.weight_ih_l0",
+        "rnn.weight_hh_l0": "wavernn.gru.weight_hh_l0",
+        "rnn.bias_ih_l0": "wavernn.gru.bias_ih_l0",
+        "rnn.bias_hh_l0": "wavernn.gru.bias_hh_l0",
+        "fc1.weight": "wavernn.fc1.weight",
+        "fc1.bias": "wavernn.fc1.bias",
+        "fc2.weight": "wavernn.fc2.weight",
+        "fc2.bias": "wavernn.fc2.bias",
+        "fc3.weight": "wavernn.fc3.weight",
+        "fc3.bias": "wavernn.fc3.bias",
+        "fc4.weight": "wavernn.fc4.weight",
+        "fc4.bias": "wavernn.fc4.bias",
+        }
+
+def upgrade_state_dict(state_dict):
+    out_dict = {}
+    for key, val in state_dict.items():
+        if key in UPGRADE_KEY:
+            key = UPGRADE_KEY[key]
+        out_dict[key] = val
+    return out_dict
+
 def try_restore(paths, model):
     if not os.path.exists(paths.model_path()):
         torch.save(model.state_dict(), paths.model_path())
-    model.load_state_dict(torch.load(paths.model_path()))
+    model.load_state_dict(upgrade_state_dict(torch.load(paths.model_path())))
 
     if not os.path.exists(paths.step_path()):
         np.save(paths.step_path(), 0)
