@@ -279,7 +279,7 @@ class Model(nn.Module) :
 
 def train(paths, model, dataset, optimiser, epochs, batch_size, seq_len, step, lr=1e-4) :
 
-    optimiser = apex.fp16_utils.FP16_Optimizer(optimiser)
+    optimiser = apex.fp16_utils.FP16_Optimizer(optimiser, dynamic_loss_scale=True)
     for p in optimiser.param_groups : p['lr'] = lr
     criterion = nn.NLLLoss().cuda()
     k = 0
