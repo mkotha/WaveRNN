@@ -42,7 +42,7 @@ dataset = wr.AudiobookDataset(dataset_ids, DATA_PATH)
 print(f'dataset size: {len(dataset)}')
 
 model = wr.Model(rnn_dims=896, fc_dims=896, pad=2,
-              upsample_factors=(5, 5, 11), feat_dims=80, cond_dims=64).cuda().half()
+              upsample_factors=(5, 5, 11), feat_dims=80).cuda().half()
 
 
 step = wr.try_restore(paths, model)
