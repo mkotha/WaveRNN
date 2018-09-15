@@ -88,45 +88,56 @@ def collate(batch) :
 
 
 
-class UpsampleNetwork(nn.Module) :
-    def __init__(self, feat_dims, out_dims, upsample_scales):
+class Stretch2d(nn.Module) :
+    def __init__(self, x_scale, y_scale) :
         super().__init__()
+        self.x_scale = x_scale
+        self.y_scale = y_scale
+
+    def forward(self, x) :
+        b, c, h, w = x.size()
+        x = x.unsqueeze(-1).unsqueeze(3)
+        x = x.repeat(1, 1, 1, self.y_scale, 1, self.x_scale)
+        return x.view(b, c, h * self.y_scale, w * self.x_scale)
+
+class UpsampleNetwork(nn.Module) :
+    def __init__(self, upsample_scales, pad):
+        super().__init__()
+        total_scale = np.cumproduct(upsample_scales)[-1]
+        self.indent = pad * total_scale
         self.up_layers = nn.ModuleList()
-        in_channels = feat_dims
-        for scale in upsample_scales:
-            if scale % 2 != 1:
-                raise RuntimeError(f"upsample scale must be odd: {scale}")
-            conv = nn.ConvTranspose1d(in_channels, out_dims,
-                    kernel_size = 2 * scale + 1,
-                    stride = scale,
-                    padding = (3 * scale - 1) // 2)
-            in_channels = out_dims
+        for scale in upsample_scales :
+            k_size = (1, scale * 2 + 1)
+            padding = (0, scale)
+            stretch = Stretch2d(scale, 1)
+            conv = nn.Conv2d(1, 1, kernel_size=k_size, padding=padding, bias=False)
+            conv.weight.data.fill_(1. / k_size[1])
+            self.up_layers.append(stretch)
             self.up_layers.append(conv)
 
-    def forward(self, mels):
-        x = mels
-        for up in self.up_layers:
-            x = F.relu(up(x))
-        return x[:, :, 1:-1]
+    def forward(self, m) :
+        m = m.unsqueeze(1)
+        for f in self.up_layers : m = f(m)
+        m = m.squeeze(1)[:, :, self.indent:-self.indent]
+        return m.transpose(1, 2)
+
 
 # In[20]:
 
 
 class Model(nn.Module) :
     def __init__(self, rnn_dims, fc_dims, pad, upsample_factors,
-                 feat_dims, cond_dims):
+                 feat_dims):
         super().__init__()
         self.n_classes = 256
         self.rnn_dims = rnn_dims
-        self.cond_dims = cond_dims
-        self.excess_pad = pad - 1
-        self.upsample = UpsampleNetwork(feat_dims, cond_dims, upsample_factors)
-        self.wavernn = WaveRNN(rnn_dims, fc_dims, cond_dims, 0)
+        self.upsample = UpsampleNetwork(upsample_factors, pad)
+        self.wavernn = WaveRNN(rnn_dims, fc_dims, feat_dims, 0)
         self.num_params()
 
     def forward(self, x, mels) :
         #print(f'x: {x.size()} mels: {mels.size()}')
-        cond = self.upsample(mels[:, :, self.excess_pad:-self.excess_pad]).transpose(1, 2)
+        cond = self.upsample(mels)
         #print(f'cond: {cond.size()}')
         return self.wavernn(x, cond, None, None, None)
 
@@ -145,7 +156,7 @@ class Model(nn.Module) :
             h = torch.zeros(1, self.rnn_dims).cuda()
 
             mels = torch.FloatTensor(mels).cuda().unsqueeze(0)
-            cond = self.upsample(mels[:, :, self.excess_pad:-self.excess_pad]).transpose(1, 2)
+            cond = self.upsample(mels)
 
             seq_len = cond.size(1)
 
