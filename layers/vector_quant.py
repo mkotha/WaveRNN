@@ -10,7 +10,7 @@ class VectorQuant(nn.Module):
     """
     def __init__(self, n_channels, n_classes, vec_len):
         super().__init__()
-        self.embedding = nn.Parameter(torch.rand(n_channels, n_classes, vec_len, requires_grad=True).cuda())
+        self.embedding = nn.Parameter(torch.randn(n_channels, n_classes, vec_len, requires_grad=True) * 0.05)
         self.offset = torch.arange(n_channels).cuda() * n_classes
         # self.offset: (n_channels) long tensor
         self.n_classes = n_classes
