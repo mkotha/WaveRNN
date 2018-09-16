@@ -1,6 +1,7 @@
 import torch.nn as nn
 import torch
 import torch.nn.functional as F
+import math
 
 class DownsamplingEncoder(nn.Module):
     """
@@ -13,7 +14,11 @@ class DownsamplingEncoder(nn.Module):
         self.convs = nn.ModuleList()
         channels = 1
         for scale, ksz, nch in layer_specs:
-            self.convs.append(nn.Conv1d(channels, nch, ksz, stride=scale))
+            conv = nn.Conv1d(channels, nch, ksz, stride=scale)
+            wsize = 2.967 / math.sqrt(ksz * channels)
+            conv.weight.data.uniform_(-wsize, wsize)
+            conv.bias.data.zero_()
+            self.convs.append(conv)
             channels = nch
 
     def forward(self, samples):
