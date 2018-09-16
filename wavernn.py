@@ -1,7 +1,7 @@
 import math, pickle, os
 import numpy as np
 import torch
-from torch.autograd import Variable 
+from torch.autograd import Variable
 from torch import optim
 import torch.nn as nn
 import torch.nn.functional as F
@@ -9,7 +9,6 @@ from torch.utils.data import Dataset, DataLoader
 from utils import *
 from utils.dsp import *
 import sys
-import time
 import models.wavernn1 as wr
 
 
