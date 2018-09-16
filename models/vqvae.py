@@ -35,14 +35,14 @@ class Model(nn.Module) :
         continuous = self.encoder(samples)
         # continuous: (N, 14, 64)
         #print(f'continuous: {continuous.size()}')
-        discrete, vq_pen, encoder_pen = self.vq(continuous.unsqueeze(2))
+        discrete, vq_pen, encoder_pen, entropy = self.vq(continuous.unsqueeze(2))
         # discrete: (N, 14, 1, 64)
         #print(f'discrete: {discrete.size()}')
 
         cond = self.upsample(discrete.squeeze(2).transpose(1, 2))
         # cond: (N, 768, 64)
         #print(f'cond: {cond.size()}')
-        return self.wavernn(x, cond, None, None, None), vq_pen.mean(), encoder_pen.mean()
+        return self.wavernn(x, cond, None, None, None), vq_pen.mean(), encoder_pen.mean(), entropy
 
     def after_update(self):
         self.wavernn.after_update()
@@ -54,7 +54,7 @@ class Model(nn.Module) :
         self.eval()
         with torch.no_grad() :
             continuous = self.encoder(samples.unsqueeze(0))
-            discrete, vq_pen, encoder_pen = self.vq(continuous.unsqueeze(2))
+            discrete, vq_pen, encoder_pen, entropy = self.vq(continuous.unsqueeze(2))
             cond = self.upsample(discrete.squeeze(2).transpose(1, 2))
             # cond: (1, L1, 64)
             #print(f'cond: {cond.size()}')
@@ -86,12 +86,14 @@ def train(paths, model, dataset, optimiser, epochs, batch_size, seq_len, step, l
         running_loss_f = 0.
         running_loss_vq = 0.
         running_loss_en = 0.
+        running_entropy = 0.
 
         iters = len(trn_loader)
 
         for i, (coarse, fine, coarse_f, fine_f) in enumerate(trn_loader) :
 
             coarse, fine, coarse_f, fine_f = coarse.cuda(), fine.cuda(), coarse_f.cuda().half(), fine_f.cuda().half()
+            #coarse, fine, coarse_f, fine_f = coarse.cuda(), fine.cuda(), coarse_f.cuda(), fine_f.cuda()
 
             pad_left = 190
             pad_right = 64
@@ -104,7 +106,7 @@ def train(paths, model, dataset, optimiser, epochs, batch_size, seq_len, step, l
             y_coarse = coarse[:, pad_left:-pad_right]
             y_fine = fine[:, pad_left:-pad_right]
 
-            p_cf, vq_pen, encoder_pen = model(x, coarse_f)
+            p_cf, vq_pen, encoder_pen, entropy = model(x, coarse_f)
             p_c, p_f = p_cf
             loss_c = criterion(p_c.transpose(1, 2).float(), y_coarse)
             loss_f = criterion(p_f.transpose(1, 2).float(), y_fine)
@@ -118,6 +120,7 @@ def train(paths, model, dataset, optimiser, epochs, batch_size, seq_len, step, l
             running_loss_f += loss_f.item()
             running_loss_vq += vq_pen.item()
             running_loss_en += encoder_pen.item()
+            running_entropy += entropy
 
             model.after_update()
 
@@ -126,10 +129,11 @@ def train(paths, model, dataset, optimiser, epochs, batch_size, seq_len, step, l
             avg_loss_f = running_loss_f / (i + 1)
             avg_loss_vq = running_loss_vq / (i + 1)
             avg_loss_en = running_loss_en / (i + 1)
+            avg_entropy = running_entropy / (i + 1)
 
             step += 1
             k = step // 1000
-            print(f'\rEpoch: {e+1}/{epochs} -- Batch: {i+1}/{iters} -- Loss: c={avg_loss_c:#.4} f={avg_loss_f:#.4} vq={avg_loss_vq:#.4} en={avg_loss_en:#.4} -- Speed: {speed:#.4} steps/sec -- Step: {k}k ', end='')
+            print(f'\rEpoch: {e+1}/{epochs} -- Batch: {i+1}/{iters} -- Loss: c={avg_loss_c:#.4} f={avg_loss_f:#.4} vq={avg_loss_vq:#.4} en={avg_loss_en:#.4} -- Entropy: {avg_entropy:#.4} -- Speed: {speed:#.4} steps/sec -- Step: {k}k ', end='')
 
         torch.save(model.state_dict(), paths.model_path())
         np.save(paths.step_path(), step)

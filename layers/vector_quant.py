@@ -1,6 +1,7 @@
 import torch.nn as nn
 import torch
 import torch.nn.functional as F
+import math
 
 class VectorQuant(nn.Module):
     """
@@ -12,12 +13,20 @@ class VectorQuant(nn.Module):
         self.embedding = nn.Parameter(torch.rand(n_channels, n_classes, vec_len, requires_grad=True).cuda())
         self.offset = torch.arange(n_channels).cuda() * n_classes
         # self.offset: (n_channels) long tensor
+        self.n_classes = n_classes
 
     def forward(self, x):
         x1 = x.reshape(x.size(0) * x.size(1), x.size(2), 1, x.size(3))
         # x1: (N*samples, n_channels, 1, vec_len) numeric tensor
         index = (x1 - self.embedding).norm(dim=3).argmin(dim=2)
         # index: (N*samples, n_channels) long tensor
+        if True: # compute the entropy
+            hist = index.float().cpu().histc(bins=self.n_classes, min=-0.5, max=self.n_classes - 0.5)
+            prob = hist.masked_select(hist > 0) / len(index)
+            entropy = - (prob * prob.log()).sum().item()
+            #print(f'entrypy: {entropy:#.4}/{math.log(self.n_classes):#.4}')
+        else:
+            entropy = 0
         index1 = (index + self.offset).view(index.size(0) * index.size(1))
         # index1: (N*samples*n_channels) long tensor
         output_flat = self.embedding.view(-1, self.embedding.size(2)).index_select(dim=0, index=index1)
@@ -27,4 +36,4 @@ class VectorQuant(nn.Module):
         out0 = (output - x).detach() + x
         out1 = (x.detach() - output).float().norm(dim=3).pow(2)
         out2 = (x - output.detach()).float().norm(dim=3).pow(2)
-        return (out0, out1, out2)
+        return (out0, out1, out2, entropy)
