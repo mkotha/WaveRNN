@@ -78,7 +78,7 @@ def train(paths, model, dataset, optimiser, epochs, batch_size, seq_len, step, l
 
     for e in range(epochs) :
 
-        trn_loader = DataLoader(dataset, collate_fn=lambda batch: env.collate_samples(1022, batch), batch_size=batch_size,
+        trn_loader = DataLoader(dataset, collate_fn=lambda batch: env.collate_samples(1214, batch), batch_size=batch_size,
                                 num_workers=2, shuffle=True, pin_memory=True)
 
         start = time.time()
