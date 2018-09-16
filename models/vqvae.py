@@ -48,11 +48,16 @@ class Model(nn.Module) :
         self.wavernn.after_update()
 
     def generate(self, samples, save_path, deterministic=False) :
+        samples = torch.FloatTensor(samples).cuda()
+        # samples: (L)
+        #print(f'samples: {samples.size()}')
         self.eval()
         with torch.no_grad() :
-            continuous = self.encoder(torch.FloatTensor(samples).cuda())
-            discrete = self.vq(continuous.unsqueeze(2)).squeeze(2)
-            cond = self.upsample(discrete)
+            continuous = self.encoder(samples.unsqueeze(0))
+            discrete, vq_pen, encoder_pen = self.vq(continuous.unsqueeze(2))
+            cond = self.upsample(discrete.squeeze(2).transpose(1, 2))
+            # cond: (1, L1, 64)
+            #print(f'cond: {cond.size()}')
             output = self.wavernn.generate(cond, None, None, None)
         librosa.output.write_wav(save_path, output, sample_rate)
         self.train()
@@ -143,4 +148,4 @@ def generate(paths, model, step, data_path, test_ids, samples=3, deterministic=F
         print('\nGenerating: %i/%i' % (i+1, samples))
         gt = 2 * gt.astype(np.float32) / (2**env.bits - 1.) - 1.
         librosa.output.write_wav(f'{paths.gen_path()}/{k}k_steps_{i}_target.wav', gt, sr=sample_rate)
-        output = model.generate(mel, f'{paths.gen_path()}/{k}k_steps_{i}_generated.wav', deterministic)
+        output = model.generate(gt, f'{paths.gen_path()}/{k}k_steps_{i}_generated.wav', deterministic)
