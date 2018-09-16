@@ -18,6 +18,11 @@ class DownsamplingEncoder(nn.Module):
 
     def forward(self, samples):
         x = samples.unsqueeze(1)
-        for conv in self.convs:
-            x = F.relu(conv(x))
+        #print(f'sd[samples] {x.std()}')
+        for i, conv in enumerate(self.convs):
+            x = conv(x)
+            #print(f'sd[conv] {x.std()}')
+            if i < len(self.convs) - 1:
+                x = F.relu(x)
+                #print(f'sd[relu] {x.std()}')
         return x.transpose(1, 2)
