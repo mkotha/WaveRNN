@@ -43,6 +43,28 @@ class AudiobookDataset(Dataset):
     def __len__(self):
         return len(self.metadata)
 
+def collate_samples(window, batch):
+    if window < 318:
+        raise RuntimeError(f"window size must be at least 318: {window}")
+    if (window + 2) % 64 != 0:
+        raise RuntimeError(f"window size must be a multiple of 64 minus 2: {window}")
+    samples = [x[1] for x in batch]
+    max_offsets = [x.shape[-1] - window for x in samples]
+    offsets = [np.random.randint(0, offset) for offset in max_offsets]
+
+    wave16 = [x[offsets[i]:offsets[i] + window] for i, x in enumerate(samples)]
+    wave16 = np.stack(wave16).astype(np.int64)
+    coarse = wave16 // 256
+    fine = wave16 % 256
+
+    coarse = torch.LongTensor(coarse)
+    fine = torch.LongTensor(fine)
+
+    coarse_f = coarse.float() / 127.5 - 1.
+    fine_f = fine.float() / 127.5 - 1.
+
+    return coarse, fine, coarse_f, fine_f
+
 def collate(batch) :
     pad = 2
     mel_win = seq_len // hop_length + 2 * pad

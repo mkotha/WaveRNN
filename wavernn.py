@@ -9,7 +9,7 @@ from torch.utils.data import Dataset, DataLoader
 from utils import *
 from utils.dsp import *
 import sys
-import models.wavernn1 as wr
+import models.vqvae as vqvae
 import utils.env as env
 
 
@@ -18,7 +18,7 @@ seq_len = hop_length * 5
 #model_name = 'wavernn.0.sine'
 #DATA_PATH = 'sinepp'
 
-model_name = 'wavernn.6.lj.nores'
+model_name = 'vq.0'
 DATA_PATH = '/mnt/backup/dataset/lj-16bit'
 #DATA_PATH = 'mepp16'
 
@@ -41,8 +41,8 @@ dataset = env.AudiobookDataset(dataset_ids, DATA_PATH)
 
 print(f'dataset size: {len(dataset)}')
 
-model = wr.Model(rnn_dims=896, fc_dims=896, pad=2,
-              upsample_factors=(5, 5, 11), feat_dims=80).cuda().half()
+model = vqvae.Model(rnn_dims=896, fc_dims=896,
+              upsample_factors=(4, 4, 4)).cuda().half()
 
 
 step = env.try_restore(paths, model)
@@ -50,7 +50,6 @@ step = env.try_restore(paths, model)
 optimiser = optim.Adam(model.parameters())
 
 
-wr.train(paths, model, dataset, optimiser, epochs=1000, batch_size=16, seq_len=seq_len, step=step, lr=1e-4)
-#wr.train(paths, model, dataset, optimiser, epochs=100, batch_size=2, seq_len=seq_len, step=step, lr=1e-4)
+vqvae.train(paths, model, dataset, optimiser, epochs=1000, batch_size=16, seq_len=seq_len, step=step, lr=1e-4)
 
-wr.generate(paths, model, step, DATA_PATH, test_ids)#, deterministic=True)
+vqvae.generate(paths, model, step, DATA_PATH, test_ids)#, deterministic=True)
