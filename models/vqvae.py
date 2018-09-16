@@ -110,7 +110,7 @@ def train(paths, model, dataset, optimiser, epochs, batch_size, seq_len, step, l
             p_c, p_f = p_cf
             loss_c = criterion(p_c.transpose(1, 2).float(), y_coarse)
             loss_f = criterion(p_f.transpose(1, 2).float(), y_fine)
-            loss = loss_c + loss_f + vq_pen + 0.25 * encoder_pen
+            loss = loss_c + loss_f + vq_pen + 1e-4 * encoder_pen
 
             optimiser.zero_grad()
             #loss.backward()

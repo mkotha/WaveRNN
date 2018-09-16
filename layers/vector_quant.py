@@ -10,15 +10,18 @@ class VectorQuant(nn.Module):
     """
     def __init__(self, n_channels, n_classes, vec_len):
         super().__init__()
-        self.embedding = nn.Parameter(torch.randn(n_channels, n_classes, vec_len, requires_grad=True) * 0.05)
+        self.embedding0 = nn.Parameter(torch.randn(n_channels, n_classes, vec_len, requires_grad=True))
         self.offset = torch.arange(n_channels).cuda() * n_classes
         # self.offset: (n_channels) long tensor
         self.n_classes = n_classes
 
-    def forward(self, x):
+    def forward(self, x0):
+        x = x0 / x0.norm(dim=3, keepdim=True)
+        #print(f'std[x] = {x.std()}')
+        embedding = self.embedding0 / self.embedding0.norm(dim=2, keepdim=True)
         x1 = x.reshape(x.size(0) * x.size(1), x.size(2), 1, x.size(3))
         # x1: (N*samples, n_channels, 1, vec_len) numeric tensor
-        index = (x1 - self.embedding).norm(dim=3).argmin(dim=2)
+        index = (x1 - embedding).norm(dim=3).argmin(dim=2)
         # index: (N*samples, n_channels) long tensor
         if True: # compute the entropy
             hist = index.float().cpu().histc(bins=self.n_classes, min=-0.5, max=self.n_classes - 0.5)
@@ -29,7 +32,7 @@ class VectorQuant(nn.Module):
             entropy = 0
         index1 = (index + self.offset).view(index.size(0) * index.size(1))
         # index1: (N*samples*n_channels) long tensor
-        output_flat = self.embedding.view(-1, self.embedding.size(2)).index_select(dim=0, index=index1)
+        output_flat = embedding.view(-1, embedding.size(2)).index_select(dim=0, index=index1)
         # output_flat: (N*samples*n_channels, vec_len) numeric tensor
         output = output_flat.view(x.size())
 
