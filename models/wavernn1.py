@@ -130,7 +130,6 @@ class Model(nn.Module) :
                  feat_dims):
         super().__init__()
         self.n_classes = 256
-        self.rnn_dims = rnn_dims
         self.upsample = UpsampleNetwork(upsample_factors, pad)
         self.wavernn = WaveRNN(rnn_dims, fc_dims, feat_dims, 0)
         self.num_params()
@@ -149,53 +148,10 @@ class Model(nn.Module) :
 
     def generate(self, mels, save_path, deterministic=False) :
         self.eval()
-        output = []
-        rnn_cell = self.wavernn.to_cell()
         with torch.no_grad() :
-            start = time.time()
-            h = torch.zeros(1, self.rnn_dims).cuda()
-
             mels = torch.FloatTensor(mels).cuda().unsqueeze(0)
             cond = self.upsample(mels)
-
-            seq_len = cond.size(1)
-
-            c_val = 0.0
-            f_val = 0.0
-
-            for i in range(seq_len) :
-                m_t = cond[:, i, :]
-
-                x = torch.FloatTensor([[c_val, f_val, 0]]).cuda()
-                o_c = rnn_cell.forward_c(x, m_t, None, None, h)
-                if deterministic:
-                    c_cat = torch.argmax(o_c, dim=1).to(torch.float32)[0]
-                else:
-                    posterior_c = F.softmax(o_c, dim=1)
-                    distrib_c = torch.distributions.Categorical(posterior_c)
-                    c_cat = distrib_c.sample().float().item()
-                c_val_new = c_cat / 127.5 - 1.0
-
-                x = torch.FloatTensor([[c_val, f_val, c_val_new]]).cuda()
-                o_f, h = rnn_cell.forward_f(x, m_t, None, None, h)
-                if deterministic:
-                    f_cat = torch.argmax(o_f, dim=1).to(torch.float32)[0]
-                else:
-                    posterior_f = F.softmax(o_f, dim=1)
-                    distrib_f = torch.distributions.Categorical(posterior_f)
-                    f_cat = distrib_f.sample().float().item()
-                f_val = f_cat / 127.5 - 1.0
-
-                c_val = c_val_new
-
-                sample = (c_cat * 256 + f_cat) / 32767.5 - 1.0
-                if i % 10000 < 100:
-                    print(f'c={c_cat} f={f_cat} sample={sample}')
-                output.append(sample)
-                if i % 100 == 0 :
-                    speed = int((i + 1) / (time.time() - start))
-                    print(f'\r{i+1}/{seq_len} -- Speed: {speed} samples/sec', end='')
-        output = np.array(output).astype(np.float32)
+            output = self.wavernn.generate(cond, None, None, None)
         librosa.output.write_wav(save_path, output, sample_rate)
         self.train()
         return output
