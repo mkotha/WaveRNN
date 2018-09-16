@@ -3,90 +3,24 @@ import numpy as np
 import torch
 from torch.autograd import Variable
 from torch import optim
+from torch.utils.data import DataLoader
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader
 from utils import *
 from utils.dsp import *
 import sys
 import time
 import apex
 from layers.wavernn import WaveRNN
+import utils.env as env
 
 
 bits = 16
 
 seq_len = hop_length * 5
 
-class Paths:
-    def __init__(self, name, data_dir, checkpoint_dir="model_checkpoints", output_dir="model_outputs"):
-        self.name = name
-        self.data_dir = data_dir
-        self.checkpoint_dir = checkpoint_dir
-        self.output_dir = output_dir
-
-    def model_path(self):
-        return f'{self.checkpoint_dir}/{self.name}.pyt'
-
-    def model_hist_path(self, step):
-        return f'{self.checkpoint_dir}/{self.name}_{step}.pyt'
-
-    def step_path(self):
-        return f'{self.checkpoint_dir}/{self.name}_step.npy'
-
-    def gen_path(self):
-        return f'{self.output_dir}/{self.name}/'
-
-def default_paths(name, data_dir):
-    return Paths(name, data_dir, checkpoint_dir="model_checkpoints", output_dir="model_outputs")
-
-class AudiobookDataset(Dataset):
-    def __init__(self, ids, path):
-        self.path = path
-        self.metadata = ids
-
-    def __getitem__(self, index):
-        file = self.metadata[index]
-        m = np.load(f'{self.path}/mel/{file}.npy')
-        x = np.load(f'{self.path}/quant/{file}.npy')
-        return m, x
-
-    def __len__(self):
-        return len(self.metadata)
-
 
 # In[10]:
-
-
-def collate(batch) :
-
-    pad = 2
-    mel_win = seq_len // hop_length + 2 * pad
-    max_offsets = [x[0].shape[-1] - (mel_win + 2 * pad) for x in batch]
-    mel_offsets = [np.random.randint(0, offset) for offset in max_offsets]
-    sig_offsets = [(offset + pad) * hop_length for offset in mel_offsets]
-
-    mels = [x[0][:, mel_offsets[i]:mel_offsets[i] + mel_win]             for i, x in enumerate(batch)]
-
-    wave16 = [x[1][sig_offsets[i]:sig_offsets[i] + seq_len + 1]               for i, x in enumerate(batch)]
-
-    mels = np.stack(mels).astype(np.float32)
-    wave16 = np.stack(wave16).astype(np.int64)
-    coarse = wave16 // 256
-    fine = wave16 % 256
-
-    mels = torch.FloatTensor(mels)
-    coarse = torch.LongTensor(coarse)
-    fine = torch.LongTensor(fine)
-
-    coarse_f = coarse.float() / 127.5 - 1.
-    fine_f = fine.float() / 127.5 - 1.
-
-    x = torch.cat([coarse_f[:, :-1].unsqueeze(-1), fine_f[:, :-1].unsqueeze(-1), coarse_f[:, 1:].unsqueeze(-1)], dim=2)
-
-    return x, mels, coarse[:, 1:], fine[:, 1:]
-
-
 
 class Stretch2d(nn.Module) :
     def __init__(self, x_scale, y_scale) :
@@ -120,10 +54,6 @@ class UpsampleNetwork(nn.Module) :
         for f in self.up_layers : m = f(m)
         m = m.squeeze(1)[:, :, self.indent:-self.indent]
         return m.transpose(1, 2)
-
-
-# In[20]:
-
 
 class Model(nn.Module) :
     def __init__(self, rnn_dims, fc_dims, pad, upsample_factors,
@@ -161,6 +91,16 @@ class Model(nn.Module) :
         parameters = sum([np.prod(p.size()) for p in parameters]) / 1_000_000
         print('Trainable Parameters: %.3f million' % parameters)
 
+    def load_state_dict(self, dict):
+        return super().load_state_dict(upgrade_state_dict(dict))
+
+def upgrade_state_dict(state_dict):
+    out_dict = {}
+    for key, val in state_dict.items():
+        if key in UPGRADE_KEY:
+            key = UPGRADE_KEY[key]
+        out_dict[key] = val
+    return out_dict
 
 def train(paths, model, dataset, optimiser, epochs, batch_size, seq_len, step, lr=1e-4) :
 
@@ -172,7 +112,7 @@ def train(paths, model, dataset, optimiser, epochs, batch_size, seq_len, step, l
 
     for e in range(epochs) :
 
-        trn_loader = DataLoader(dataset, collate_fn=collate, batch_size=batch_size,
+        trn_loader = DataLoader(dataset, collate_fn=env.collate, batch_size=batch_size,
                                 num_workers=2, shuffle=True, pin_memory=True)
 
         start = time.time()
@@ -186,13 +126,9 @@ def train(paths, model, dataset, optimiser, epochs, batch_size, seq_len, step, l
             x, m, y_coarse, y_fine = x.cuda().half(), m.cuda().half(), y_coarse.cuda(), y_fine.cuda()
 
             p_c, p_f = model(x, m)
-            #print(f'p_c: {p_c.size()}, p_f: {p_f.size()}, y_coarse: {y_coarse.size()}')
-            #print(f'p_c: {p_c}')
-            #print(f'p_f: {p_f}')
             loss_c = criterion(p_c.transpose(1, 2).float(), y_coarse)
             loss_f = criterion(p_f.transpose(1, 2).float(), y_fine)
             loss = loss_c + loss_f
-            #print(f'loss_c: {loss_c} loss_f: {loss_f} loss: {loss}')
 
             optimiser.zero_grad()
             #loss.backward()
@@ -226,7 +162,7 @@ def generate(paths, model, step, data_path, test_ids, samples=3, deterministic=F
     os.makedirs(paths.gen_path(), exist_ok=True)
     for i, (gt, mel) in enumerate(zip(ground_truth, test_mels)) :
         print('\nGenerating: %i/%i' % (i+1, samples))
-        gt = 2 * gt.astype(np.float32) / (2**bits - 1.) - 1.
+        gt = 2 * gt.astype(np.float32) / (2**env.bits - 1.) - 1.
         librosa.output.write_wav(f'{paths.gen_path()}/{k}k_steps_{i}_target.wav', gt, sr=sample_rate)
         output = model.generate(mel, f'{paths.gen_path()}/{k}k_steps_{i}_generated.wav', deterministic)
 
@@ -244,20 +180,3 @@ UPGRADE_KEY = {
         "fc4.weight": "wavernn.fc4.weight",
         "fc4.bias": "wavernn.fc4.bias",
         }
-
-def upgrade_state_dict(state_dict):
-    out_dict = {}
-    for key, val in state_dict.items():
-        if key in UPGRADE_KEY:
-            key = UPGRADE_KEY[key]
-        out_dict[key] = val
-    return out_dict
-
-def try_restore(paths, model):
-    if not os.path.exists(paths.model_path()):
-        torch.save(model.state_dict(), paths.model_path())
-    model.load_state_dict(upgrade_state_dict(torch.load(paths.model_path())))
-
-    if not os.path.exists(paths.step_path()):
-        np.save(paths.step_path(), 0)
-    return np.load(paths.step_path())
