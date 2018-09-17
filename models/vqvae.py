@@ -18,12 +18,12 @@ from layers.downsampling_encoder import DownsamplingEncoder
 import utils.env as env
 
 class Model(nn.Module) :
-    def __init__(self, rnn_dims, fc_dims, upsample_factors):
+    def __init__(self, rnn_dims, fc_dims, upsample_factors, normalize_vq=False):
         super().__init__()
         self.n_classes = 256
         self.upsample = UpsampleNetwork(upsample_factors, pad=1)
         self.wavernn = WaveRNN(rnn_dims, fc_dims, 64, 0)
-        self.vq = VectorQuant(1, 512, 64)
+        self.vq = VectorQuant(1, 512, 64, normalize=normalize_vq)
         self.encoder = DownsamplingEncoder([(2, 4, 8), (2, 4, 16), (2, 4, 32), (2, 4, 64), (2, 4, 64), (2, 4, 64)])
         self.num_params()
 

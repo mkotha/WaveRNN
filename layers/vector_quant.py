@@ -8,17 +8,22 @@ class VectorQuant(nn.Module):
         Input: (N, samples, n_channels, vec_len) numeric tensor
         Output: (N, samples, n_channels, vec_len) numeric tensor
     """
-    def __init__(self, n_channels, n_classes, vec_len):
+    def __init__(self, n_channels, n_classes, vec_len, normalize=False):
         super().__init__()
-        self.embedding0 = nn.Parameter(torch.randn(n_channels, n_classes, vec_len, requires_grad=True))
+        self.embedding0 = nn.Parameter(torch.randn(n_channels, n_classes, vec_len, requires_grad=True) * 1e-2)
         self.offset = torch.arange(n_channels).cuda() * n_classes
         # self.offset: (n_channels) long tensor
         self.n_classes = n_classes
+        self.normalize = normalize
 
     def forward(self, x0):
-        x = x0 / x0.norm(dim=3, keepdim=True)
+        if self.normalize:
+            x = x0 / x0.norm(dim=3, keepdim=True)
+            embedding = self.embedding0 / self.embedding0.norm(dim=2, keepdim=True)
+        else:
+            x = x0
+            embedding = self.embedding0
         #print(f'std[x] = {x.std()}')
-        embedding = self.embedding0 / self.embedding0.norm(dim=2, keepdim=True)
         x1 = x.reshape(x.size(0) * x.size(1), x.size(2), 1, x.size(3))
         # x1: (N*samples, n_channels, 1, vec_len) numeric tensor
         index = (x1 - embedding).norm(dim=3).argmin(dim=2)
