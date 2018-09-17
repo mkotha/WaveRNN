@@ -18,7 +18,7 @@ seq_len = hop_length * 5
 #model_name = 'wavernn.0.sine'
 #DATA_PATH = 'sinepp'
 
-model_name = 'vq.0'
+model_name = 'vq.4'
 DATA_PATH = '/mnt/backup/dataset/lj-16bit'
 #DATA_PATH = 'mepp16'
 
@@ -42,7 +42,7 @@ dataset = env.AudiobookDataset(dataset_ids, DATA_PATH)
 print(f'dataset size: {len(dataset)}')
 
 model = vqvae.Model(rnn_dims=896, fc_dims=896,
-              upsample_factors=(4, 4, 4)).cuda().half()
+              upsample_factors=(4, 4, 4), normalize_vq=False).cuda().half()
 
 
 step = env.try_restore(paths, model)

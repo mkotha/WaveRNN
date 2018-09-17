@@ -13,7 +13,7 @@ class DownsamplingEncoder(nn.Module):
 
         self.convs_strided = nn.ModuleList()
         self.convs_1x1 = nn.ModuleList()
-        self.skips = []
+        self.layer_specs = layer_specs
         prev_channels = 1
         for scale, ksz in layer_specs:
             conv_strided = nn.Conv1d(prev_channels, 2 * channels, ksz, stride=scale)
@@ -26,15 +26,14 @@ class DownsamplingEncoder(nn.Module):
             conv_1x1.bias.data.zero_()
             self.convs_1x1.append(conv_1x1)
 
-            self.skips.append(ksz - scale)
-
             prev_channels = channels
 
     def forward(self, samples):
         x = samples.unsqueeze(1)
         #print(f'sd[samples] {x.std()}')
-        for i, stuff in enumerate(zip(self.convs_strided, self.convs_1x1, self.skips)):
-            conv_strided, conv_1x1, skip = stuff
+        for i, stuff in enumerate(zip(self.convs_strided, self.convs_1x1, self.layer_specs)):
+            conv_strided, conv_1x1, layer_spec = stuff
+            scale, ksz = layer_spec
 
             x1 = conv_strided(x)
             #print(f'sd[conv.s] {x1.std()}')
@@ -46,6 +45,7 @@ class DownsamplingEncoder(nn.Module):
             if i == 0:
                 x = x3
             else:
-                x = x3 + x[:, :, skip:].view(x.size(0), x3.size(1), x3.size(2), -1)[:, :, :, -1]
+                skip = ksz - scale
+                x = x3 + x[:, :, skip:skip+x3.size(2)*scale].view(x.size(0), x3.size(1), x3.size(2), -1)[:, :, :, -1]
             #print(f'sd[out] {x.std()}')
         return x.transpose(1, 2)
