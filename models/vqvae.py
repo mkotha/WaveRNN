@@ -55,6 +55,7 @@ class Model(nn.Module) :
         with torch.no_grad() :
             continuous = self.encoder(samples.unsqueeze(0))
             discrete, vq_pen, encoder_pen, entropy = self.vq(continuous.unsqueeze(2))
+            print(f'entropy: {entropy}')
             cond = self.upsample(discrete.squeeze(2).transpose(1, 2))
             # cond: (1, L1, 64)
             #print(f'cond: {cond.size()}')
