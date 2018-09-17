@@ -17,19 +17,19 @@ import utils.env as env
 import utils.logger as logger
 
 class Model(nn.Module) :
-    def __init__(self, rnn_dims, fc_dims, pad, upsample_factors,
-                 feat_dims):
+    def __init__(self, rnn_dims, fc_dims, pad, upsample_factors, feat_dims):
         super().__init__()
         self.n_classes = 256
-        self.upsample = UpsampleNetwork(upsample_factors, pad)
+        self.excess_pad = pad - 1
+        self.upsample = UpsampleNetwork(feat_dims, upsample_factors)
         self.wavernn = WaveRNN(rnn_dims, fc_dims, feat_dims, 0)
         self.num_params()
 
     def forward(self, x, mels) :
         #logger.log(f'x: {x.size()} mels: {mels.size()}')
-        cond = self.upsample(mels)
+        cond = self.upsample(mels[:, :, self.excess_pad:-self.excess_pad])
         #logger.log(f'cond: {cond.size()}')
-        return self.wavernn(x, cond, None, None, None)
+        return self.wavernn(x, cond.transpose(1, 2), None, None, None)
 
     def after_update(self):
         self.wavernn.after_update()
@@ -43,8 +43,8 @@ class Model(nn.Module) :
             mels = mels.half()
         self.eval()
         with torch.no_grad() :
-            cond = self.upsample(mels)
-            output = self.wavernn.generate(cond, None, None, None, use_half=use_half, verbose=verbose)
+            cond = self.upsample(mels[:, :, self.excess_pad:-self.excess_pad])
+            output = self.wavernn.generate(cond.transpose(1, 2), None, None, None, use_half=use_half, verbose=verbose)
         self.train()
         return output
 
