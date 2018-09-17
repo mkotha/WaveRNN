@@ -22,9 +22,9 @@ class Model(nn.Module) :
         super().__init__()
         self.n_classes = 256
         self.upsample = UpsampleNetwork(upsample_factors, pad=1)
-        self.wavernn = WaveRNN(rnn_dims, fc_dims, 64, 0)
-        self.vq = VectorQuant(1, 512, 64, normalize=normalize_vq)
-        self.encoder = DownsamplingEncoder([(2, 4, 8), (2, 4, 16), (2, 4, 32), (2, 4, 64), (2, 4, 64), (2, 4, 64)])
+        self.wavernn = WaveRNN(rnn_dims, fc_dims, 128, 0)
+        self.vq = VectorQuant(1, 512, 128, normalize=normalize_vq)
+        self.encoder = DownsamplingEncoder(128, [(2, 4), (2, 4), (2, 4), (2, 4), (2, 4), (2, 4)])
         self.num_params()
 
     def forward(self, x, samples):
