@@ -18,7 +18,7 @@ seq_len = hop_length * 5
 #model_name = 'wavernn.0.sine'
 #DATA_PATH = 'sinepp'
 
-model_name = 'vq.5.norm'
+model_name = 'vq.6.norm'
 DATA_PATH = '/mnt/backup/dataset/lj-16bit'
 #DATA_PATH = 'mepp16'
 
