@@ -11,16 +11,22 @@ class DownsamplingEncoder(nn.Module):
     def __init__(self, channels, layer_specs):
         super().__init__()
 
-        self.convs_strided = nn.ModuleList()
+        self.convs_wide = nn.ModuleList()
         self.convs_1x1 = nn.ModuleList()
         self.layer_specs = layer_specs
         prev_channels = 1
-        for scale, ksz in layer_specs:
-            conv_strided = nn.Conv1d(prev_channels, 2 * channels, ksz, stride=scale)
+        dilation_factor = 1
+        for scale, ksz, dilate in layer_specs:
+            if dilate:
+                dilation_factor *= ksz
+                stride = 1
+            else:
+                stride = ksz
+            conv_wide = nn.Conv1d(prev_channels, 2 * channels, ksz, stride=stride, dilation=dilation_factor)
             wsize = 2.967 / math.sqrt(ksz * prev_channels)
-            conv_strided.weight.data.uniform_(-wsize, wsize)
-            conv_strided.bias.data.zero_()
-            self.convs_strided.append(conv_strided)
+            conv_wide.weight.data.uniform_(-wsize, wsize)
+            conv_wide.bias.data.zero_()
+            self.convs_wide.append(conv_wide)
 
             conv_1x1 = nn.Conv1d(channels, channels, 1)
             conv_1x1.bias.data.zero_()
@@ -31,11 +37,11 @@ class DownsamplingEncoder(nn.Module):
     def forward(self, samples):
         x = samples.unsqueeze(1)
         #print(f'sd[samples] {x.std()}')
-        for i, stuff in enumerate(zip(self.convs_strided, self.convs_1x1, self.layer_specs)):
-            conv_strided, conv_1x1, layer_spec = stuff
+        for i, stuff in enumerate(zip(self.convs_wide, self.convs_1x1, self.layer_specs)):
+            conv_wide, conv_1x1, layer_spec = stuff
             scale, ksz = layer_spec
 
-            x1 = conv_strided(x)
+            x1 = conv_wide(x)
             #print(f'sd[conv.s] {x1.std()}')
             x1_a, x1_b = x1.split(x1.size(1) // 2, dim=1)
             x2 = torch.tanh(x1_a) * torch.sigmoid(x1_b)
