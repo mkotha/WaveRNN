@@ -24,7 +24,19 @@ class Model(nn.Module) :
         self.upsample = UpsampleNetwork(upsample_factors, pad=1)
         self.wavernn = WaveRNN(rnn_dims, fc_dims, 128, 0)
         self.vq = VectorQuant(1, 512, 128, normalize=normalize_vq)
-        self.encoder = DownsamplingEncoder(128, [(2, 4), (2, 4), (2, 4), (2, 4), (2, 4), (2, 4)])
+        encoder_layers = [
+            (2, 4, False),
+            (2, 4, False),
+            (2, 4, False),
+            (2, 4, False),
+            (2, 4, False),
+            (2, 4, False),
+            (2, 4, True),
+            (2, 4, True),
+            (2, 4, True),
+            (2, 4, True),
+            ]
+        self.encoder = DownsamplingEncoder(128, encoder_layers)
         self.num_params()
 
     def forward(self, x, samples):
@@ -69,6 +81,15 @@ class Model(nn.Module) :
         parameters = sum([np.prod(p.size()) for p in parameters]) / 1_000_000
         print('Trainable Parameters: %.3f million' % parameters)
 
+    def pad_left(self):
+        return self.encoder.pad_left + self.encoder.total_scale
+
+    def pad_right(self):
+        return self.encoder.total_scale
+
+    def total_scale(self):
+        return self.encoder.total_scale
+
 def train(paths, model, dataset, optimiser, epochs, batch_size, seq_len, step, lr=1e-4) :
 
     optimiser = apex.fp16_utils.FP16_Optimizer(optimiser, dynamic_loss_scale=True)
@@ -76,10 +97,14 @@ def train(paths, model, dataset, optimiser, epochs, batch_size, seq_len, step, l
     criterion = nn.NLLLoss().cuda()
     k = 0
     saved_k = 0
+    pad_left = model.pad_left()
+    pad_right = model.pad_right()
+    time_span = pad_left + pad_right + 16 * model.total_scale()
+    print(f'pad_left={pad_left}, pad_right={pad_right}, total_scale={model.total_scale()}')
 
     for e in range(epochs) :
 
-        trn_loader = DataLoader(dataset, collate_fn=lambda batch: env.collate_samples(1214, batch), batch_size=batch_size,
+        trn_loader = DataLoader(dataset, collate_fn=lambda batch: env.collate_samples(time_span, batch), batch_size=batch_size,
                                 num_workers=2, shuffle=True, pin_memory=True)
 
         start = time.time()
@@ -95,9 +120,6 @@ def train(paths, model, dataset, optimiser, epochs, batch_size, seq_len, step, l
             coarse, fine, coarse_f, fine_f = coarse.cuda(), fine.cuda(), coarse_f.cuda().half(), fine_f.cuda().half()
             #coarse, fine, coarse_f, fine_f = coarse.cuda(), fine.cuda(), coarse_f.cuda(), fine_f.cuda()
 
-            pad_left = 190
-            pad_right = 64
-
             x = torch.cat([
                 coarse_f[:, pad_left-1:-pad_right-1].unsqueeze(-1),
                 fine_f[:, pad_left-1:-pad_right-1].unsqueeze(-1),
@@ -110,7 +132,7 @@ def train(paths, model, dataset, optimiser, epochs, batch_size, seq_len, step, l
             p_c, p_f = p_cf
             loss_c = criterion(p_c.transpose(1, 2).float(), y_coarse)
             loss_f = criterion(p_f.transpose(1, 2).float(), y_fine)
-            loss = loss_c + loss_f + vq_pen + 0.1 * encoder_pen
+            loss = loss_c + loss_f + vq_pen + 0.01 * encoder_pen
 
             optimiser.zero_grad()
             #loss.backward()

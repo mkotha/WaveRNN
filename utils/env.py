@@ -44,10 +44,7 @@ class AudiobookDataset(Dataset):
         return len(self.metadata)
 
 def collate_samples(window, batch):
-    if window < 318:
-        raise RuntimeError(f"window size must be at least 318: {window}")
-    if (window + 2) % 64 != 0:
-        raise RuntimeError(f"window size must be a multiple of 64 minus 2: {window}")
+    #print(f'collate: window={window}')
     samples = [x[1] for x in batch]
     max_offsets = [x.shape[-1] - window for x in samples]
     offsets = [np.random.randint(0, offset) for offset in max_offsets]
