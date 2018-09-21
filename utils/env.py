@@ -3,6 +3,7 @@ import torch
 import os
 import numpy as np
 from utils.dsp import *
+import re
 
 bits = 16
 seq_len = hop_length * 5
@@ -89,11 +90,12 @@ def collate(batch) :
 
     return x, mels, coarse[:, 1:], fine[:, 1:]
 
-def try_restore(paths, model):
-    if not os.path.exists(paths.model_path()):
-        torch.save(model.state_dict(), paths.model_path())
-    model.load_state_dict(torch.load(paths.model_path()))
+def restore(path, model):
+    model.load_state_dict(torch.load(path))
 
-    if not os.path.exists(paths.step_path()):
-        np.save(paths.step_path(), 0)
-    return np.load(paths.step_path())
+    match = re.search(r'_([0-9]+)\.pyt', path)
+    if match:
+        return int(match.group(1))
+
+    step_path = re.sub(r'\.pyt', '_step.npy', path)
+    return np.load(step_path)
