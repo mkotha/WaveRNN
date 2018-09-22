@@ -19,6 +19,7 @@ parser.add_argument('--generate', '-g', action='store_true')
 parser.add_argument('--float', action='store_true')
 parser.add_argument('--half', action='store_true')
 parser.add_argument('--load', '-l')
+parser.add_argument('--scratch', action='store_true')
 args = parser.parse_args()
 
 if args.float and args.half:
@@ -61,7 +62,7 @@ model = vqvae.Model(rnn_dims=896, fc_dims=896,
 if use_half:
     model = model.half()
 
-if args.load == None and not os.path.exists(paths.model_path()):
+if args.scratch or args.load == None and not os.path.exists(paths.model_path()):
     # Start from scratch
     step = 0
 else:
