@@ -36,7 +36,7 @@ seq_len = hop_length * 5
 
 model_name = 'vq.9.wide'
 
-if platform.node().startswith('ip-'): # Running on EC2
+if platform.node().endswith('.ec2') or platform.node().startswith('ip-'): # Running on EC2
     DATA_PATH = '/home/ubuntu/dataset/lj-16bit'
 else:
     DATA_PATH = '/mnt/backup/dataset/lj-16bit'
