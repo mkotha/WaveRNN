@@ -13,6 +13,7 @@ import models.vqvae as vqvae
 import utils.env as env
 import argparse
 import platform
+import re
 
 parser = argparse.ArgumentParser(description='Train or run some neural net')
 parser.add_argument('--generate', '-g', action='store_true')
@@ -41,8 +42,6 @@ if platform.node().endswith('.ec2') or platform.node().startswith('ip-'): # Runn
 else:
     DATA_PATH = '/mnt/backup/dataset/lj-16bit'
 
-paths = env.Paths(model_name, DATA_PATH)
-
 with open(f'{DATA_PATH}/dataset_ids.pkl', 'rb') as f:
     dataset_ids = pickle.load(f)
 
@@ -62,11 +61,18 @@ model = vqvae.Model(rnn_dims=896, fc_dims=896,
 if use_half:
     model = model.half()
 
+paths = env.Paths(model_name, DATA_PATH)
+
 if args.scratch or args.load == None and not os.path.exists(paths.model_path()):
     # Start from scratch
     step = 0
 else:
     if args.load:
+        prev_model_name = re.sub(r'_[0-9]+$', '', re.sub(r'\.pyt$', '', os.path.basename(args.load)))
+        prev_model_basename = prev_model_name.split('_')[0]
+        if prev_model_basename != model_name:
+            sys.exit(f'refusing to load {args.load} because its basename ({prev_model_basename}) is not {model_name}')
+        paths = env.Paths(prev_model_name, DATA_PATH)
         prev_path = args.load
     else:
         prev_path = paths.model_path()
