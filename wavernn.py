@@ -99,6 +99,14 @@ else:
         prev_path = paths.model_path()
     step = env.restore(prev_path, model)
 
+# Fix encoder parameters
+for name, param in model.named_parameters():
+    if name.startswith('encoder.') or name.startswith('vq.'):
+        print(f'Freezing {name}')
+        param.requires_grad = False
+    else:
+        print(f'Not freezing {name}')
+
 optimiser = optim.Adam(model.parameters())
 
 if args.generate:
