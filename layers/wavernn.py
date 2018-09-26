@@ -52,10 +52,12 @@ class WaveRNN(nn.Module) :
         return WaveRNNCell(self.gru, self.rnn_dims,
                 self.fc1, self.fc2, self.fc3, self.fc4)
 
-    def generate(self, feat, aux1, aux2, aux3, deterministic=False, use_half=False, verbose=False):
+    def generate(self, feat, aux1, aux2, aux3, deterministic=False, use_half=False, verbose=False, seq_len=None, batch_size=None):
         start = time.time()
-        seq_len = feat.size(1)
-        batch_size = feat.size(0)
+        if seq_len is None:
+            seq_len = feat.size(1)
+        if batch_size is None:
+            batch_size = feat.size(0)
         h = torch.zeros(batch_size, self.rnn_dims).cuda()
         if use_half:
             h = h.half()
@@ -67,7 +69,10 @@ class WaveRNN(nn.Module) :
         output = []
 
         for i in range(seq_len) :
-            m_t = feat[:, i, :]
+            if feat == None:
+                m_t = None
+            else:
+                m_t = feat[:, i, :]
             if aux1 == None:
                 a1_t = None
             else:

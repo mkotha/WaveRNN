@@ -9,6 +9,7 @@ from torch.utils.data import Dataset, DataLoader
 from utils import *
 from utils.dsp import *
 import sys
+import models.nocond as nc
 import models.vqvae as vqvae
 import models.wavernn1 as wr
 import utils.env as env
@@ -69,6 +70,8 @@ if args.model is None or args.model == 'vqvae':
 elif args.model == 'wavernn':
     model = wr.Model(rnn_dims=896, fc_dims=896, pad=2,
                   upsample_factors=(5, 5, 11), feat_dims=80).cuda()
+elif args.model == 'nc':
+    model = nc.Model(rnn_dims=896, fc_dims=896).cuda()
 else:
     sys.exit(f'Unknown model: {args.model}')
 
