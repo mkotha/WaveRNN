@@ -26,7 +26,8 @@ class Model(nn.Module) :
         self.num_params()
 
     def forward(self, x):
-        return self.wavernn(x, None, None, None, None)
+        p_c, p_f, _h = self.wavernn(x, None, None, None, None)
+        return p_c, p_f
 
     def after_update(self):
         self.wavernn.after_update()
