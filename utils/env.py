@@ -27,6 +27,9 @@ class Paths:
     def gen_path(self):
         return f'{self.output_dir}/{self.name}/'
 
+    def logfile_path(self):
+        return f'log/{self.name}'
+
 def default_paths(name, data_dir):
     return Paths(name, data_dir, checkpoint_dir="model_checkpoints", output_dir="model_outputs")
 

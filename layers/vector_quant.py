@@ -2,6 +2,7 @@ import torch.nn as nn
 import torch
 import torch.nn.functional as F
 import math
+import utils.logger as logger
 
 class VectorQuant(nn.Module):
     """
@@ -23,7 +24,7 @@ class VectorQuant(nn.Module):
         else:
             x = x0
             embedding = self.embedding0
-        #print(f'std[x] = {x.std()}')
+        #logger.log(f'std[x] = {x.std()}')
         x1 = x.reshape(x.size(0) * x.size(1), x.size(2), 1, x.size(3))
         # x1: (N*samples, n_channels, 1, vec_len) numeric tensor
         index = (x1 - embedding).norm(dim=3).argmin(dim=2)
@@ -32,7 +33,7 @@ class VectorQuant(nn.Module):
             hist = index.float().cpu().histc(bins=self.n_classes, min=-0.5, max=self.n_classes - 0.5)
             prob = hist.masked_select(hist > 0) / len(index)
             entropy = - (prob * prob.log()).sum().item()
-            #print(f'entrypy: {entropy:#.4}/{math.log(self.n_classes):#.4}')
+            #logger.log(f'entrypy: {entropy:#.4}/{math.log(self.n_classes):#.4}')
         else:
             entropy = 0
         index1 = (index + self.offset).view(index.size(0) * index.size(1))

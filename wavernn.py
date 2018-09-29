@@ -14,6 +14,8 @@ import utils.env as env
 import argparse
 import platform
 import re
+import utils.logger as logger
+import time
 
 parser = argparse.ArgumentParser(description='Train or run some neural net')
 parser.add_argument('--generate', '-g', action='store_true')
@@ -84,5 +86,9 @@ optimiser = optim.Adam(model.parameters())
 if args.generate:
     vqvae.generate(paths, model, step, DATA_PATH, test_ids)#, deterministic=True)
 else:
+    logger.set_logfile(paths.logfile_path())
+    logger.log('------------------------------------------------------------')
+    logger.log('-- New training session starts here ------------------------')
+    logger.log(time.strftime('%c UTC', time.gmtime()))
     vqvae.train(paths, model, dataset, optimiser, epochs=1000, batch_size=16, seq_len=seq_len, step=step, lr=1e-4)
 

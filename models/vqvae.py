@@ -16,6 +16,7 @@ from layers.upsample import UpsampleNetwork
 from layers.vector_quant import VectorQuant
 from layers.downsampling_encoder import DownsamplingEncoder
 import utils.env as env
+import utils.logger as logger
 
 class Model(nn.Module) :
     def __init__(self, rnn_dims, fc_dims, upsample_factors, normalize_vq=False):
@@ -41,19 +42,19 @@ class Model(nn.Module) :
 
     def forward(self, x, samples):
         # x: (N, 768, 3)
-        #print(f'x: {x.size()}')
+        #logger.log(f'x: {x.size()}')
         # samples: (N, 1022)
-        #print(f'samples: {samples.size()}')
+        #logger.log(f'samples: {samples.size()}')
         continuous = self.encoder(samples)
         # continuous: (N, 14, 64)
-        #print(f'continuous: {continuous.size()}')
+        #logger.log(f'continuous: {continuous.size()}')
         discrete, vq_pen, encoder_pen, entropy = self.vq(continuous.unsqueeze(2))
         # discrete: (N, 14, 1, 64)
-        #print(f'discrete: {discrete.size()}')
+        #logger.log(f'discrete: {discrete.size()}')
 
         cond = self.upsample(discrete.squeeze(2).transpose(1, 2))
         # cond: (N, 768, 64)
-        #print(f'cond: {cond.size()}')
+        #logger.log(f'cond: {cond.size()}')
         return self.wavernn(x, cond, None, None, None), vq_pen.mean(), encoder_pen.mean(), entropy
 
     def after_update(self):
@@ -62,15 +63,15 @@ class Model(nn.Module) :
     def generate(self, samples, save_path, deterministic=False) :
         samples = torch.FloatTensor(samples).cuda()
         # samples: (L)
-        #print(f'samples: {samples.size()}')
+        #logger.log(f'samples: {samples.size()}')
         self.eval()
         with torch.no_grad() :
             continuous = self.encoder(samples.unsqueeze(0))
             discrete, vq_pen, encoder_pen, entropy = self.vq(continuous.unsqueeze(2))
-            print(f'entropy: {entropy}')
+            logger.log(f'entropy: {entropy}')
             cond = self.upsample(discrete.squeeze(2).transpose(1, 2))
             # cond: (1, L1, 64)
-            #print(f'cond: {cond.size()}')
+            #logger.log(f'cond: {cond.size()}')
             output = self.wavernn.generate(cond, None, None, None)
         librosa.output.write_wav(save_path, output, sample_rate)
         self.train()
@@ -79,7 +80,7 @@ class Model(nn.Module) :
     def num_params(self) :
         parameters = filter(lambda p: p.requires_grad, self.parameters())
         parameters = sum([np.prod(p.size()) for p in parameters]) / 1_000_000
-        print('Trainable Parameters: %.3f million' % parameters)
+        logger.log('Trainable Parameters: %.3f million' % parameters)
 
     def pad_left(self):
         return self.encoder.pad_left + self.encoder.total_scale
@@ -100,7 +101,7 @@ def train(paths, model, dataset, optimiser, epochs, batch_size, seq_len, step, l
     pad_left = model.pad_left()
     pad_right = model.pad_right()
     time_span = pad_left + pad_right + 16 * model.total_scale()
-    print(f'pad_left={pad_left}, pad_right={pad_right}, total_scale={model.total_scale()}')
+    logger.log(f'pad_left={pad_left}, pad_right={pad_right}, total_scale={model.total_scale()}')
 
     for e in range(epochs) :
 
@@ -153,11 +154,12 @@ def train(paths, model, dataset, optimiser, epochs, batch_size, seq_len, step, l
 
             step += 1
             k = step // 1000
-            print(f'\rEpoch: {e+1}/{epochs} -- Batch: {i+1}/{iters} -- Loss: c={avg_loss_c:#.4} f={avg_loss_f:#.4} vq={avg_loss_vq:#.4} -- Entropy: {avg_entropy:#.4} -- Speed: {speed:#.4} steps/sec -- Step: {k}k ', end='')
+            logger.status(f'Epoch: {e+1}/{epochs} -- Batch: {i+1}/{iters} -- Loss: c={avg_loss_c:#.4} f={avg_loss_f:#.4} vq={avg_loss_vq:#.4} -- Entropy: {avg_entropy:#.4} -- Speed: {speed:#.4} steps/sec -- Step: {k}k ')
 
         torch.save(model.state_dict(), paths.model_path())
         np.save(paths.step_path(), step)
-        print(f'\n <saved>; w[0][0] = {model.wavernn.gru.weight_ih_l0[0][0]}')
+        logger.log_current_status()
+        logger.log(f' <saved>; w[0][0] = {model.wavernn.gru.weight_ih_l0[0][0]}')
         if k > saved_k + 50:
             torch.save(model.state_dict(), paths.model_hist_path(step))
             saved_k = k
@@ -169,7 +171,7 @@ def generate(paths, model, step, data_path, test_ids, samples=3, deterministic=F
     ground_truth = [np.load(f'{data_path}/quant/{id}.npy') for id in test_ids[:samples]]
     os.makedirs(paths.gen_path(), exist_ok=True)
     for i, (gt, mel) in enumerate(zip(ground_truth, test_mels)) :
-        print('\nGenerating: %i/%i' % (i+1, samples))
+        logger.log('Generating: %i/%i' % (i+1, samples))
         gt = 2 * gt.astype(np.float32) / (2**env.bits - 1.) - 1.
         librosa.output.write_wav(f'{paths.gen_path()}/{k}k_steps_{i}_target.wav', gt, sr=sample_rate)
         output = model.generate(gt, f'{paths.gen_path()}/{k}k_steps_{i}_generated.wav', deterministic)
