@@ -70,8 +70,9 @@ else:
     if args.load:
         prev_model_name = re.sub(r'_[0-9]+$', '', re.sub(r'\.pyt$', '', os.path.basename(args.load)))
         prev_model_basename = prev_model_name.split('_')[0]
-        if prev_model_basename != model_name:
-            sys.exit(f'refusing to load {args.load} because its basename ({prev_model_basename}) is not {model_name}')
+        model_basename = model_name.split('_')[0]
+        if prev_model_basename != model_basename:
+            sys.exit(f'refusing to load {args.load} because its basename ({prev_model_basename}) is not {model_basename}')
         paths = env.Paths(prev_model_name, DATA_PATH)
         prev_path = args.load
     else:
