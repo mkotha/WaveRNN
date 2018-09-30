@@ -17,7 +17,8 @@ def log(msg):
     """ Print a line to stdout and to the log file
     """
 
-    clear_status()
+    #clear_status()
+    log_current_status()
     log_to_file(msg)
     print(msg)
 
