@@ -98,5 +98,4 @@ else:
     logger.log('------------------------------------------------------------')
     logger.log('-- New training session starts here ------------------------')
     logger.log(time.strftime('%c UTC', time.gmtime()))
-    model.do_train(paths, dataset, optimiser, epochs=1000, batch_size=16, seq_len=seq_len, step=step, lr=1e-4)
-
+    model.do_train(paths, dataset, optimiser, epochs=1000, batch_size=16, seq_len=seq_len, step=step, lr=1e-4, use_half=use_half, valid_ids=test_ids)

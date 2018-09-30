@@ -15,15 +15,18 @@ class WaveRNN(nn.Module) :
         self.rnn_dims = rnn_dims
         self.aux_dims = aux_dims
         self.half_rnn_dims = rnn_dims // 2
+        self.feat_dims = feat_dims
         self.gru = nn.GRU(feat_dims + self.aux_dims + 3, rnn_dims, batch_first=True)
         self.fc1 = nn.Linear(self.half_rnn_dims + self.aux_dims, fc_dims)
         self.fc2 = nn.Linear(fc_dims, self.n_classes)
         self.fc3 = nn.Linear(self.half_rnn_dims + self.aux_dims, fc_dims)
         self.fc4 = nn.Linear(fc_dims, self.n_classes)
+        self.register_buffer('mask', self.create_mask())
 
-        coarse_mask = torch.cat([torch.ones(self.half_rnn_dims, feat_dims + self.aux_dims + 2), torch.zeros(self.half_rnn_dims, 1)], dim=1)
-        i2h_mask = torch.cat([coarse_mask, torch.ones(self.half_rnn_dims, feat_dims + self.aux_dims + 3)], dim=0)
-        self.mask = torch.cat([i2h_mask, i2h_mask, i2h_mask], dim=0).cuda().half()
+    def create_mask(self):
+        coarse_mask = torch.cat([torch.ones(self.half_rnn_dims, self.feat_dims + self.aux_dims + 2), torch.zeros(self.half_rnn_dims, 1)], dim=1)
+        i2h_mask = torch.cat([coarse_mask, torch.ones(self.half_rnn_dims, self.feat_dims + self.aux_dims + 3)], dim=0)
+        return torch.cat([i2h_mask, i2h_mask, i2h_mask], dim=0)
 
     def forward(self, x, feat, aux1, aux2, aux3) :
         x = torch.cat(filter_none([feat, aux1, x]), dim=2)
@@ -49,7 +52,7 @@ class WaveRNN(nn.Module) :
         return WaveRNNCell(self.gru, self.rnn_dims,
                 self.fc1, self.fc2, self.fc3, self.fc4)
 
-    def generate(self, feat, aux1, aux2, aux3, deterministic=False, use_half=False):
+    def generate(self, feat, aux1, aux2, aux3, deterministic=False, use_half=False, verbose=False):
         start = time.time()
         h = torch.zeros(1, self.rnn_dims).cuda()
         if use_half:
@@ -103,7 +106,7 @@ class WaveRNN(nn.Module) :
             c_val = c_val_new
 
             sample = (c_cat * 256 + f_cat) / 32767.5 - 1.0
-            if i % 10000 < 100:
+            if verbose and i % 10000 < 100:
                 logger.log(f'c={c_cat} f={f_cat} sample={sample}')
             output.append(sample)
             if i % 100 == 0 :
