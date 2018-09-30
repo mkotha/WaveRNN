@@ -35,7 +35,7 @@ if args.float:
 elif args.half:
     use_half = True
 else:
-    use_half = not args.generate
+    use_half = False
 
 seq_len = hop_length * 5
 
