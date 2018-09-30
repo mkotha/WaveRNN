@@ -37,12 +37,14 @@ class Model(nn.Module) :
     def preview_upsampling(self, mels) :
         return self.upsample(mels)
 
-    def generate(self, mels, save_path, deterministic=False) :
+    def generate(self, mels, save_path, deterministic=False, use_half=False):
         self.eval()
         with torch.no_grad() :
             mels = torch.FloatTensor(mels).cuda().unsqueeze(0)
+            if use_half:
+                mels = mels.half()
             cond = self.upsample(mels)
-            output = self.wavernn.generate(cond, None, None, None)
+            output = self.wavernn.generate(cond, None, None, None, use_half=use_half)
         librosa.output.write_wav(save_path, output, sample_rate)
         self.train()
         return output
@@ -116,17 +118,17 @@ def train(paths, model, dataset, optimiser, epochs, batch_size, seq_len, step, l
             torch.save(model.state_dict(), paths.model_hist_path(step))
             saved_k = k
 
-def generate(paths, model, step, data_path, test_ids, samples=3, deterministic=False) :
+def generate(paths, model, step, data_path, test_ids, deterministic=False, use_half=False):
     global output
     k = step // 1000
-    test_mels = [np.load(f'{data_path}/mel/{id}.npy') for id in test_ids[:samples]]
-    ground_truth = [np.load(f'{data_path}/quant/{id}.npy') for id in test_ids[:samples]]
+    test_mels = [np.load(f'{data_path}/mel/{id}.npy') for id in test_ids]
+    ground_truth = [np.load(f'{data_path}/quant/{id}.npy') for id in test_ids]
     os.makedirs(paths.gen_path(), exist_ok=True)
     for i, (gt, mel) in enumerate(zip(ground_truth, test_mels)) :
-        logger.log('Generating: %i/%i' % (i+1, samples))
+        logger.log('Generating: %i/%i' % (i+1, len(test_ids)))
         gt = 2 * gt.astype(np.float32) / (2**env.bits - 1.) - 1.
         librosa.output.write_wav(f'{paths.gen_path()}/{k}k_steps_{i}_target.wav', gt, sr=sample_rate)
-        output = model.generate(mel, f'{paths.gen_path()}/{k}k_steps_{i}_generated.wav', deterministic)
+        output = model.generate(mel, f'{paths.gen_path()}/{k}k_steps_{i}_generated.wav', deterministic, use_half=use_half)
 
 UPGRADE_KEY = {
         "rnn.weight_ih_l0": "wavernn.gru.weight_ih_l0",

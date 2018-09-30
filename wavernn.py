@@ -49,7 +49,7 @@ with open(f'{DATA_PATH}/dataset_ids.pkl', 'rb') as f:
 
 #test_ids = dataset_ids[-50:]
 #dataset_ids = dataset_ids[:-50]
-test_ids = dataset_ids[-3:]
+test_ids = dataset_ids[-3:] + dataset_ids[:3]
 dataset_ids = dataset_ids[:-3]
 
 
@@ -84,7 +84,7 @@ else:
 optimiser = optim.Adam(model.parameters())
 
 if args.generate:
-    vqvae.generate(paths, model, step, DATA_PATH, test_ids)#, deterministic=True)
+    vqvae.generate(paths, model, step, DATA_PATH, test_ids, use_half=use_half)#, deterministic=True)
 else:
     logger.set_logfile(paths.logfile_path())
     logger.log('------------------------------------------------------------')

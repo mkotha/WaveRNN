@@ -49,9 +49,11 @@ class WaveRNN(nn.Module) :
         return WaveRNNCell(self.gru, self.rnn_dims,
                 self.fc1, self.fc2, self.fc3, self.fc4)
 
-    def generate(self, feat, aux1, aux2, aux3, deterministic=False):
+    def generate(self, feat, aux1, aux2, aux3, deterministic=False, use_half=False):
         start = time.time()
         h = torch.zeros(1, self.rnn_dims).cuda()
+        if use_half:
+            h = h.half()
         seq_len = feat.size(1)
 
         c_val = 0.0
@@ -75,6 +77,8 @@ class WaveRNN(nn.Module) :
                 a3_t = aux3[:, i, :]
 
             x = torch.FloatTensor([[c_val, f_val, 0]]).cuda()
+            if use_half:
+                x = x.half()
             o_c = rnn_cell.forward_c(x, m_t, a1_t, a2_t, h)
             if deterministic:
                 c_cat = torch.argmax(o_c, dim=1).to(torch.float32)[0]
@@ -85,6 +89,8 @@ class WaveRNN(nn.Module) :
             c_val_new = c_cat / 127.5 - 1.0
 
             x = torch.FloatTensor([[c_val, f_val, c_val_new]]).cuda()
+            if use_half:
+                x = x.half()
             o_f, h = rnn_cell.forward_f(x, m_t, a1_t, a3_t, h)
             if deterministic:
                 f_cat = torch.argmax(o_f, dim=1).to(torch.float32)[0]

@@ -60,8 +60,10 @@ class Model(nn.Module) :
     def after_update(self):
         self.wavernn.after_update()
 
-    def generate(self, samples, save_path, deterministic=False) :
+    def generate(self, samples, save_path, deterministic=False, use_half=False):
         samples = torch.FloatTensor(samples).cuda()
+        if use_half:
+            samples = samples.half()
         # samples: (L)
         #logger.log(f'samples: {samples.size()}')
         self.eval()
@@ -72,7 +74,7 @@ class Model(nn.Module) :
             cond = self.upsample(discrete.squeeze(2).transpose(1, 2))
             # cond: (1, L1, 64)
             #logger.log(f'cond: {cond.size()}')
-            output = self.wavernn.generate(cond, None, None, None)
+            output = self.wavernn.generate(cond, None, None, None, use_half=use_half)
         librosa.output.write_wav(save_path, output, sample_rate)
         self.train()
         return output
@@ -164,14 +166,14 @@ def train(paths, model, dataset, optimiser, epochs, batch_size, seq_len, step, l
             torch.save(model.state_dict(), paths.model_hist_path(step))
             saved_k = k
 
-def generate(paths, model, step, data_path, test_ids, samples=3, deterministic=False) :
+def generate(paths, model, step, data_path, test_ids, deterministic=False, use_half=False):
     global output
     k = step // 1000
-    test_mels = [np.load(f'{data_path}/mel/{id}.npy') for id in test_ids[:samples]]
-    ground_truth = [np.load(f'{data_path}/quant/{id}.npy') for id in test_ids[:samples]]
+    test_mels = [np.load(f'{data_path}/mel/{id}.npy') for id in test_ids]
+    ground_truth = [np.load(f'{data_path}/quant/{id}.npy') for id in test_ids]
     os.makedirs(paths.gen_path(), exist_ok=True)
     for i, (gt, mel) in enumerate(zip(ground_truth, test_mels)) :
-        logger.log('Generating: %i/%i' % (i+1, samples))
+        logger.log('Generating: %i/%i' % (i+1, len(test_ids)))
         gt = 2 * gt.astype(np.float32) / (2**env.bits - 1.) - 1.
         librosa.output.write_wav(f'{paths.gen_path()}/{k}k_steps_{i}_target.wav', gt, sr=sample_rate)
-        output = model.generate(gt, f'{paths.gen_path()}/{k}k_steps_{i}_generated.wav', deterministic)
+        output = model.generate(gt, f'{paths.gen_path()}/{k}k_steps_{i}_generated.wav', deterministic=deterministic, use_half=use_half)
