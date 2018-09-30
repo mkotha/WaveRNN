@@ -50,5 +50,5 @@ class VectorQuant(nn.Module):
 
         out0 = (output - x).detach() + x
         out1 = (x.detach() - output).float().norm(dim=3).pow(2)
-        out2 = (x - output.detach()).float().norm(dim=3).pow(2)
+        out2 = (x0 - output.detach()).float().norm(dim=3).pow(2)
         return (out0, out1, out2, entropy)

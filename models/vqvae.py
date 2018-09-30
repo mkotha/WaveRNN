@@ -122,6 +122,7 @@ class Model(nn.Module) :
             running_loss_c = 0.
             running_loss_f = 0.
             running_loss_vq = 0.
+            running_loss_vqc = 0.
             running_entropy = 0.
 
             iters = len(trn_loader)
@@ -154,6 +155,7 @@ class Model(nn.Module) :
                 running_loss_c += loss_c.item()
                 running_loss_f += loss_f.item()
                 running_loss_vq += vq_pen.item()
+                running_loss_vqc += encoder_pen.item()
                 running_entropy += entropy
 
                 self.after_update()
@@ -162,11 +164,12 @@ class Model(nn.Module) :
                 avg_loss_c = running_loss_c / (i + 1)
                 avg_loss_f = running_loss_f / (i + 1)
                 avg_loss_vq = running_loss_vq / (i + 1)
+                avg_loss_vqc = running_loss_vqc / (i + 1)
                 avg_entropy = running_entropy / (i + 1)
 
                 step += 1
                 k = step // 1000
-                logger.status(f'Epoch: {e+1}/{epochs} -- Batch: {i+1}/{iters} -- Loss: c={avg_loss_c:#.4} f={avg_loss_f:#.4} vq={avg_loss_vq:#.4} -- Entropy: {avg_entropy:#.4} -- Speed: {speed:#.4} steps/sec -- Step: {k}k ')
+                logger.status(f'Epoch: {e+1}/{epochs} -- Batch: {i+1}/{iters} -- Loss: c={avg_loss_c:#.4} f={avg_loss_f:#.4} vq={avg_loss_vq:#.4} vqc={avg_loss_vqc:#.4} -- Entropy: {avg_entropy:#.4} -- Speed: {speed:#.4} steps/sec -- Step: {k}k ')
 
             torch.save(self.state_dict(), paths.model_path())
             np.save(paths.step_path(), step)

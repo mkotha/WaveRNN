@@ -40,7 +40,7 @@ else:
 
 seq_len = hop_length * 5
 
-model_name = 'vq.16.scale'
+model_name = 'vq.17.vqc'
 
 if platform.node().endswith('.ec2') or platform.node().startswith('ip-'): # Running on EC2
     DATA_PATH = '/home/ubuntu/dataset/lj-16bit'
