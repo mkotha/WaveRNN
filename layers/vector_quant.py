@@ -11,16 +11,22 @@ class VectorQuant(nn.Module):
     """
     def __init__(self, n_channels, n_classes, vec_len, normalize=False):
         super().__init__()
-        self.embedding0 = nn.Parameter(torch.randn(n_channels, n_classes, vec_len, requires_grad=True) * 1e-3)
+        if normalize:
+            target_scale = 0.06
+            embedding_scale = target_scale
+            self.normalize_scale = target_scale * math.sqrt(vec_len)
+        else:
+            embedding_scale = 1e-3
+            self.normalize_scale = None
+        self.embedding0 = nn.Parameter(torch.randn(n_channels, n_classes, vec_len, requires_grad=True) * embedding_scale)
         self.offset = torch.arange(n_channels).cuda() * n_classes
         # self.offset: (n_channels) long tensor
         self.n_classes = n_classes
-        self.normalize = normalize
 
     def forward(self, x0):
-        if self.normalize:
-            x = x0 / x0.norm(dim=3, keepdim=True)
-            embedding = self.embedding0 / self.embedding0.norm(dim=2, keepdim=True)
+        if self.normalize_scale:
+            x = self.normalize_scale * x0 / x0.norm(dim=3, keepdim=True)
+            embedding = self.normalize_scale * self.embedding0 / self.embedding0.norm(dim=2, keepdim=True)
         else:
             x = x0
             embedding = self.embedding0
