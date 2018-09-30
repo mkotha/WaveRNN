@@ -61,22 +61,20 @@ class Model(nn.Module) :
     def after_update(self):
         self.wavernn.after_update()
 
-    def forward_generate(self, samples, save_path, deterministic=False, use_half=False, verbose=False):
-        samples = torch.FloatTensor(samples).cuda()
+    def forward_generate(self, samples, deterministic=False, use_half=False, verbose=False):
         if use_half:
             samples = samples.half()
         # samples: (L)
         #logger.log(f'samples: {samples.size()}')
         self.eval()
         with torch.no_grad() :
-            continuous = self.encoder(samples.unsqueeze(0))
+            continuous = self.encoder(samples)
             discrete, vq_pen, encoder_pen, entropy = self.vq(continuous.unsqueeze(2))
             logger.log(f'entropy: {entropy}')
             cond = self.upsample(discrete.squeeze(2).transpose(1, 2))
             # cond: (1, L1, 64)
             #logger.log(f'cond: {cond.size()}')
-            output = self.wavernn.generate(cond, None, None, None, use_half=use_half, verbose=False)
-        librosa.output.write_wav(save_path, output, sample_rate)
+            output = self.wavernn.generate(cond, None, None, None, use_half=use_half, verbose=verbose)
         self.train()
         return output
 
@@ -181,11 +179,15 @@ class Model(nn.Module) :
 
     def do_generate(self, paths, step, data_path, test_ids, deterministic=False, use_half=False, verbose=False):
         k = step // 1000
-        test_mels = [np.load(f'{data_path}/mel/{id}.npy') for id in test_ids]
-        ground_truth = [np.load(f'{data_path}/quant/{id}.npy') for id in test_ids]
+        gt = [np.load(f'{data_path}/quant/{id}.npy') for id in test_ids]
+        gt = [2 * x.astype(np.float32) / (2**env.bits - 1.) - 1. for x in gt]
+        maxlen = max([len(x) for x in gt])
+        aligned = [torch.cat([torch.FloatTensor(x), torch.zeros(maxlen-len(x))]) for x in gt]
         os.makedirs(paths.gen_path(), exist_ok=True)
-        for i, (gt, mel) in enumerate(zip(ground_truth, test_mels)) :
-            logger.log('Generating: %i/%i' % (i+1, len(test_ids)))
-            gt = 2 * gt.astype(np.float32) / (2**env.bits - 1.) - 1.
-            librosa.output.write_wav(f'{paths.gen_path()}/{k}k_steps_{i}_target.wav', gt, sr=sample_rate)
-            output = self.forward_generate(gt, f'{paths.gen_path()}/{k}k_steps_{i}_generated.wav', deterministic=deterministic, use_half=use_half, verbose=verbose)
+        out = self.forward_generate(torch.stack(aligned).cuda(), verbose=verbose)
+        logger.log(f'out: {out.size()}')
+        for i, x in enumerate(gt) :
+            out_len = len(x) + out.size(1) - maxlen
+            audio = out[i][:out_len].cpu().numpy()
+            librosa.output.write_wav(f'{paths.gen_path()}/{k}k_steps_{i}_target.wav', x, sr=sample_rate)
+            librosa.output.write_wav(f'{paths.gen_path()}/{k}k_steps_{i}_generated.wav', audio, sr=sample_rate)

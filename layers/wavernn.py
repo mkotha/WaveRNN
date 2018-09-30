@@ -54,13 +54,15 @@ class WaveRNN(nn.Module) :
 
     def generate(self, feat, aux1, aux2, aux3, deterministic=False, use_half=False, verbose=False):
         start = time.time()
-        h = torch.zeros(1, self.rnn_dims).cuda()
+        seq_len = feat.size(1)
+        batch_size = feat.size(0)
+        h = torch.zeros(batch_size, self.rnn_dims).cuda()
         if use_half:
             h = h.half()
-        seq_len = feat.size(1)
 
-        c_val = 0.0
-        f_val = 0.0
+        c_val = torch.zeros(batch_size).cuda()
+        f_val = torch.zeros(batch_size).cuda()
+        zero = torch.zeros(batch_size).cuda()
         rnn_cell = self.to_cell()
         output = []
 
@@ -79,42 +81,41 @@ class WaveRNN(nn.Module) :
             else:
                 a3_t = aux3[:, i, :]
 
-            x = torch.FloatTensor([[c_val, f_val, 0]]).cuda()
+            x = torch.stack([c_val, f_val, zero], dim=1)
             if use_half:
                 x = x.half()
             o_c = rnn_cell.forward_c(x, m_t, a1_t, a2_t, h)
             if deterministic:
-                c_cat = torch.argmax(o_c, dim=1).to(torch.float32)[0]
+                c_cat = torch.argmax(o_c, dim=1).to(torch.float32)
             else:
                 posterior_c = F.softmax(o_c, dim=1)
                 distrib_c = torch.distributions.Categorical(posterior_c)
-                c_cat = distrib_c.sample().float().item()
+                c_cat = distrib_c.sample().float()
             c_val_new = c_cat / 127.5 - 1.0
 
-            x = torch.FloatTensor([[c_val, f_val, c_val_new]]).cuda()
+            x = torch.stack([c_val, f_val, c_val_new], dim=1)
             if use_half:
                 x = x.half()
             o_f, h = rnn_cell.forward_f(x, m_t, a1_t, a3_t, h)
             if deterministic:
-                f_cat = torch.argmax(o_f, dim=1).to(torch.float32)[0]
+                f_cat = torch.argmax(o_f, dim=1).to(torch.float32)
             else:
                 posterior_f = F.softmax(o_f, dim=1)
                 distrib_f = torch.distributions.Categorical(posterior_f)
-                f_cat = distrib_f.sample().float().item()
+                f_cat = distrib_f.sample().float()
             f_val = f_cat / 127.5 - 1.0
 
             c_val = c_val_new
 
             sample = (c_cat * 256 + f_cat) / 32767.5 - 1.0
             if verbose and i % 10000 < 100:
-                logger.log(f'c={c_cat} f={f_cat} sample={sample}')
+                logger.log(f'c={c_cat[0]} f={f_cat[0]} sample={sample[0]}')
             output.append(sample)
             if i % 100 == 0 :
                 speed = int((i + 1) / (time.time() - start))
                 logger.status(f'{i+1}/{seq_len} -- Speed: {speed} samples/sec')
 
-        return np.array(output).astype(np.float32)
-
+        return torch.stack(output, dim=1)
 
 class WaveRNNCell(nn.Module):
     def __init__(self, gru, rnn_dims, fc1, fc2, fc3, fc4):

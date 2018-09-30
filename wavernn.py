@@ -25,6 +25,7 @@ parser.add_argument('--half', action='store_true')
 parser.add_argument('--load', '-l')
 parser.add_argument('--scratch', action='store_true')
 parser.add_argument('--model', '-m')
+parser.add_argument('--force', action='store_true', help='skip the version check')
 args = parser.parse_args()
 
 if args.float and args.half:
@@ -39,7 +40,7 @@ else:
 
 seq_len = hop_length * 5
 
-model_name = 'vq.16.wide'
+model_name = 'vq.9.wide_a4'
 
 if platform.node().endswith('.ec2') or platform.node().startswith('ip-'): # Running on EC2
     DATA_PATH = '/home/ubuntu/dataset/lj-16bit'
@@ -81,7 +82,7 @@ else:
         prev_model_name = re.sub(r'_[0-9]+$', '', re.sub(r'\.pyt$', '', os.path.basename(args.load)))
         prev_model_basename = prev_model_name.split('_')[0]
         model_basename = model_name.split('_')[0]
-        if prev_model_basename != model_basename:
+        if prev_model_basename != model_basename and not args.force:
             sys.exit(f'refusing to load {args.load} because its basename ({prev_model_basename}) is not {model_basename}')
         paths = env.Paths(prev_model_name, DATA_PATH)
         prev_path = args.load
@@ -92,7 +93,7 @@ else:
 optimiser = optim.Adam(model.parameters())
 
 if args.generate:
-    model.do_generate(paths, step, DATA_PATH, test_ids, use_half=use_half)#, deterministic=True)
+    model.do_generate(paths, step, DATA_PATH, test_ids, use_half=use_half, verbose=True)#, deterministic=True)
 else:
     logger.set_logfile(paths.logfile_path())
     logger.log('------------------------------------------------------------')
