@@ -10,6 +10,7 @@ from utils import *
 from utils.dsp import *
 import sys
 import models.vqvae as vqvae
+import models.wavernn1 as wr
 import utils.env as env
 import argparse
 import platform
@@ -23,6 +24,7 @@ parser.add_argument('--float', action='store_true')
 parser.add_argument('--half', action='store_true')
 parser.add_argument('--load', '-l')
 parser.add_argument('--scratch', action='store_true')
+parser.add_argument('--model', '-m')
 args = parser.parse_args()
 
 if args.float and args.half:
@@ -57,8 +59,14 @@ dataset = env.AudiobookDataset(dataset_ids, DATA_PATH)
 
 print(f'dataset size: {len(dataset)}')
 
-model = vqvae.Model(rnn_dims=896, fc_dims=896,
-              upsample_factors=(4, 4, 4), normalize_vq=True).cuda()
+if args.model is None or args.model == 'vqvae':
+    model = vqvae.Model(rnn_dims=896, fc_dims=896,
+                  upsample_factors=(4, 4, 4), normalize_vq=True).cuda()
+elif args.model == 'wavernn':
+    model = wr.Model(rnn_dims=896, fc_dims=896, pad=2,
+                  upsample_factors=(5, 5, 11), feat_dims=80).cuda()
+else:
+    sys.exit(f'Unknown model: {args.model}')
 
 if use_half:
     model = model.half()
@@ -84,11 +92,11 @@ else:
 optimiser = optim.Adam(model.parameters())
 
 if args.generate:
-    vqvae.generate(paths, model, step, DATA_PATH, test_ids, use_half=use_half)#, deterministic=True)
+    model.do_generate(paths, step, DATA_PATH, test_ids, use_half=use_half)#, deterministic=True)
 else:
     logger.set_logfile(paths.logfile_path())
     logger.log('------------------------------------------------------------')
     logger.log('-- New training session starts here ------------------------')
     logger.log(time.strftime('%c UTC', time.gmtime()))
-    vqvae.train(paths, model, dataset, optimiser, epochs=1000, batch_size=16, seq_len=seq_len, step=step, lr=1e-4)
+    model.do_train(paths, dataset, optimiser, epochs=1000, batch_size=16, seq_len=seq_len, step=step, lr=1e-4)
 
