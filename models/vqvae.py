@@ -38,6 +38,7 @@ class Model(nn.Module) :
             (2, 4, True),
             ]
         self.encoder = DownsamplingEncoder(128, encoder_layers)
+        self.frame_advantage = 4
         self.num_params()
 
     def forward(self, x, samples):
@@ -94,10 +95,10 @@ class Model(nn.Module) :
         return out_dict
 
     def pad_left(self):
-        return self.encoder.pad_left + self.encoder.total_scale
+        return self.encoder.pad_left + (1 - self.frame_advantage) * self.encoder.total_scale
 
     def pad_right(self):
-        return self.encoder.total_scale
+        return (1 + self.frame_advantage) * self.encoder.total_scale
 
     def total_scale(self):
         return self.encoder.total_scale
