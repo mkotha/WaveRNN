@@ -52,7 +52,8 @@ class VectorQuant(nn.Module):
 
         out0 = (output - x).detach() + x
         out1 = (x.detach() - output).float().norm(dim=3).pow(2)
-        out2 = (x0 - output.detach()).float().norm(dim=3).pow(2)
+        out2 = (x - output.detach()).float().norm(dim=3).pow(2) + (x - x0).float().norm(dim=3).pow(2)
+        #logger.log(f'std[embedding0] = {self.embedding0.view(-1, embedding.size(2)).index_select(dim=0, index=index1).std()}')
         return (out0, out1, out2, entropy)
 
     def after_update(self):
