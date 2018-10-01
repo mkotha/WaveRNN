@@ -26,6 +26,7 @@ parser.add_argument('--load', '-l')
 parser.add_argument('--scratch', action='store_true')
 parser.add_argument('--model', '-m')
 parser.add_argument('--force', action='store_true', help='skip the version check')
+parser.add_argument('--count', '-c', type=int, help='number of audio files to generate')
 args = parser.parse_args()
 
 if args.float and args.half:
@@ -55,6 +56,8 @@ with open(f'{DATA_PATH}/dataset_ids.pkl', 'rb') as f:
 test_ids = dataset_ids[-3:] + dataset_ids[:3]
 dataset_ids = dataset_ids[:-3]
 
+if args.count is not None:
+    test_ids = test_ids[:args.count]
 
 dataset = env.AudiobookDataset(dataset_ids, DATA_PATH)
 
