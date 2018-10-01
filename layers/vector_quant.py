@@ -13,20 +13,22 @@ class VectorQuant(nn.Module):
         super().__init__()
         if normalize:
             target_scale = 0.06
-            embedding_scale = target_scale
-            self.normalize_scale = target_scale * math.sqrt(vec_len)
+            self.embedding_scale = target_scale
+            self.normalize_scale = target_scale
         else:
-            embedding_scale = 1e-3
+            self.embedding_scale = 1e-3
             self.normalize_scale = None
-        self.embedding0 = nn.Parameter(torch.randn(n_channels, n_classes, vec_len, requires_grad=True) * embedding_scale)
+        self.embedding0 = nn.Parameter(torch.randn(n_channels, n_classes, vec_len, requires_grad=True) * self.embedding_scale)
         self.offset = torch.arange(n_channels).cuda() * n_classes
         # self.offset: (n_channels) long tensor
         self.n_classes = n_classes
+        self.after_update()
 
     def forward(self, x0):
         if self.normalize_scale:
-            x = self.normalize_scale * x0 / x0.norm(dim=3, keepdim=True)
-            embedding = self.normalize_scale * self.embedding0 / self.embedding0.norm(dim=2, keepdim=True)
+            target_norm = self.normalize_scale * math.sqrt(x0.size(3))
+            x = target_norm * x0 / x0.norm(dim=3, keepdim=True)
+            embedding = target_norm * self.embedding0 / self.embedding0.norm(dim=2, keepdim=True)
         else:
             x = x0
             embedding = self.embedding0
@@ -52,3 +54,9 @@ class VectorQuant(nn.Module):
         out1 = (x.detach() - output).float().norm(dim=3).pow(2)
         out2 = (x0 - output.detach()).float().norm(dim=3).pow(2)
         return (out0, out1, out2, entropy)
+
+    def after_update(self):
+        if self.normalize_scale:
+            with torch.no_grad():
+                target_norm = self.embedding_scale * math.sqrt(self.embedding0.size(2))
+                self.embedding0.mul_(target_norm / self.embedding0.norm(dim=2, keepdim=True))

@@ -60,6 +60,7 @@ class Model(nn.Module) :
 
     def after_update(self):
         self.wavernn.after_update()
+        self.vq.after_update()
 
     def forward_generate(self, samples, deterministic=False, use_half=False, verbose=False):
         if use_half:
