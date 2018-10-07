@@ -47,13 +47,13 @@ class AudiobookDataset(Dataset):
     def __len__(self):
         return len(self.metadata)
 
-def collate_samples(window, batch):
+def collate_samples(left_pad, window, right_pad, batch):
     #print(f'collate: window={window}')
     samples = [x[1] for x in batch]
     max_offsets = [x.shape[-1] - window for x in samples]
     offsets = [np.random.randint(0, offset) for offset in max_offsets]
 
-    wave16 = [x[offsets[i]:offsets[i] + window] for i, x in enumerate(samples)]
+    wave16 = [np.concatenate([np.zeros(left_pad, dtype=np.int16), x, np.zeros(right_pad, dtype=np.int16)])[offsets[i]:offsets[i] + left_pad + window + right_pad] for i, x in enumerate(samples)]
     wave16 = np.stack(wave16).astype(np.int64)
     coarse = wave16 // 256
     fine = wave16 % 256

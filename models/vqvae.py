@@ -111,12 +111,12 @@ class Model(nn.Module) :
         saved_k = 0
         pad_left = self.pad_left()
         pad_right = self.pad_right()
-        time_span = pad_left + pad_right + 16 * self.total_scale()
+        window = 16 * self.total_scale()
         logger.log(f'pad_left={pad_left}, pad_right={pad_right}, total_scale={self.total_scale()}')
 
         for e in range(epochs) :
 
-            trn_loader = DataLoader(dataset, collate_fn=lambda batch: env.collate_samples(time_span, batch), batch_size=batch_size,
+            trn_loader = DataLoader(dataset, collate_fn=lambda batch: env.collate_samples(pad_left, window, pad_right, batch), batch_size=batch_size,
                                     num_workers=2, shuffle=True, pin_memory=True)
 
             start = time.time()
@@ -185,8 +185,9 @@ class Model(nn.Module) :
         k = step // 1000
         gt = [np.load(f'{data_path}/quant/{id}.npy') for id in test_ids]
         gt = [2 * x.astype(np.float32) / (2**env.bits - 1.) - 1. for x in gt]
-        maxlen = max([len(x) for x in gt])
-        aligned = [torch.cat([torch.FloatTensor(x), torch.zeros(maxlen-len(x))]) for x in gt]
+        extended = [np.concatenate([np.zeros(self.pad_left(), dtype=np.float32), x, np.zeros(self.pad_right(), dtype=np.float32)]) for x in gt]
+        maxlen = max([len(x) for x in extended])
+        aligned = [torch.cat([torch.FloatTensor(x), torch.zeros(maxlen-len(x))]) for x in extended]
         os.makedirs(paths.gen_path(), exist_ok=True)
         out = self.forward_generate(torch.stack(aligned).cuda(), verbose=verbose)
         logger.log(f'out: {out.size()}')
