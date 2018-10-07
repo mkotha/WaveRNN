@@ -104,7 +104,8 @@ class Model(nn.Module) :
 
     def do_train(self, paths, dataset, optimiser, epochs, batch_size, seq_len, step, lr=1e-4, valid_ids=[], use_half=False):
 
-        optimiser = apex.fp16_utils.FP16_Optimizer(optimiser, dynamic_loss_scale=True)
+        if use_half:
+            optimiser = apex.fp16_utils.FP16_Optimizer(optimiser, dynamic_loss_scale=True)
         for p in optimiser.param_groups : p['lr'] = lr
         criterion = nn.NLLLoss().cuda()
         k = 0
@@ -125,6 +126,8 @@ class Model(nn.Module) :
             running_loss_vq = 0.
             running_loss_vqc = 0.
             running_entropy = 0.
+            max_grad = 0.
+            max_grad_name = ""
 
             iters = len(trn_loader)
 
@@ -150,8 +153,16 @@ class Model(nn.Module) :
                 loss = loss_c + loss_f + vq_pen + 0.01 * encoder_pen
 
                 optimiser.zero_grad()
-                #loss.backward()
-                optimiser.backward(loss)
+                if use_half:
+                    optimiser.backward(loss)
+                else:
+                    loss.backward()
+                    for name, param in self.named_parameters():
+                        param_max_grad = param.grad.data.abs().max()
+                        if param_max_grad > max_grad:
+                            max_grad = param_max_grad
+                            max_grad_name = name
+                    nn.utils.clip_grad_value_(self.parameters(), 1)
                 optimiser.step()
                 running_loss_c += loss_c.item()
                 running_loss_f += loss_f.item()
@@ -170,7 +181,7 @@ class Model(nn.Module) :
 
                 step += 1
                 k = step // 1000
-                logger.status(f'Epoch: {e+1}/{epochs} -- Batch: {i+1}/{iters} -- Loss: c={avg_loss_c:#.4} f={avg_loss_f:#.4} vq={avg_loss_vq:#.4} vqc={avg_loss_vqc:#.4} -- Entropy: {avg_entropy:#.4} -- Speed: {speed:#.4} steps/sec -- Step: {k}k ')
+                logger.status(f'Epoch: {e+1}/{epochs} -- Batch: {i+1}/{iters} -- Loss: c={avg_loss_c:#.4} f={avg_loss_f:#.4} vq={avg_loss_vq:#.4} vqc={avg_loss_vqc:#.4} -- Entropy: {avg_entropy:#.4} -- Grad: {max_grad:#.1} {max_grad_name} Speed: {speed:#.4} steps/sec -- Step: {k}k ')
 
             torch.save(self.state_dict(), paths.model_path())
             np.save(paths.step_path(), step)
