@@ -203,7 +203,6 @@ class Model(nn.Module) :
         out = self.forward_generate(torch.stack(aligned).cuda(), verbose=verbose)
         logger.log(f'out: {out.size()}')
         for i, x in enumerate(gt) :
-            out_len = len(x) + out.size(1) - maxlen
-            audio = out[i][:out_len].cpu().numpy()
+            audio = out[i][:len(x)].cpu().numpy()
             librosa.output.write_wav(f'{paths.gen_path()}/{k}k_steps_{i}_target.wav', x, sr=sample_rate)
             librosa.output.write_wav(f'{paths.gen_path()}/{k}k_steps_{i}_generated.wav', audio, sr=sample_rate)
