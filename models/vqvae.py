@@ -162,7 +162,7 @@ class Model(nn.Module) :
                         if param_max_grad > max_grad:
                             max_grad = param_max_grad
                             max_grad_name = name
-                    nn.utils.clip_grad_value_(self.parameters(), 1)
+                    nn.utils.clip_grad_norm_(self.parameters(), 1, norm_type='inf')
                 optimiser.step()
                 running_loss_c += loss_c.item()
                 running_loss_f += loss_f.item()
