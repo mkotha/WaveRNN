@@ -195,7 +195,7 @@ class Model(nn.Module) :
     def do_generate(self, paths, step, data_path, test_ids, deterministic=False, use_half=False, verbose=False):
         k = step // 1000
         gt = [np.load(f'{data_path}/quant/{id}.npy') for id in test_ids]
-        gt = [2 * x.astype(np.float32) / (2**env.bits - 1.) - 1. for x in gt]
+        gt = [(x.astype(np.float32) + 0.5) / (2**15 - 0.5) for x in gt]
         extended = [np.concatenate([np.zeros(self.pad_left(), dtype=np.float32), x, np.zeros(self.pad_right(), dtype=np.float32)]) for x in gt]
         maxlen = max([len(x) for x in extended])
         aligned = [torch.cat([torch.FloatTensor(x), torch.zeros(maxlen-len(x))]) for x in extended]

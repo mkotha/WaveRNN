@@ -54,7 +54,7 @@ def collate_samples(left_pad, window, right_pad, batch):
     offsets = [np.random.randint(0, offset) for offset in max_offsets]
 
     wave16 = [np.concatenate([np.zeros(left_pad, dtype=np.int16), x, np.zeros(right_pad, dtype=np.int16)])[offsets[i]:offsets[i] + left_pad + window + right_pad] for i, x in enumerate(samples)]
-    wave16 = np.stack(wave16).astype(np.int64)
+    wave16 = np.stack(wave16).astype(np.int64) + 2**15
     coarse = wave16 // 256
     fine = wave16 % 256
 
@@ -78,7 +78,7 @@ def collate(batch) :
     wave16 = [x[1][sig_offsets[i]:sig_offsets[i] + seq_len + 1]               for i, x in enumerate(batch)]
 
     mels = np.stack(mels).astype(np.float32)
-    wave16 = np.stack(wave16).astype(np.int64)
+    wave16 = np.stack(wave16).astype(np.int64) + 2**15
     coarse = wave16 // 256
     fine = wave16 % 256
 
