@@ -69,19 +69,19 @@ class WaveRNN(nn.Module) :
         output = []
 
         for i in range(seq_len) :
-            if feat == None:
+            if feat is None:
                 m_t = None
             else:
                 m_t = feat[:, i, :]
-            if aux1 == None:
+            if aux1 is None:
                 a1_t = None
             else:
                 a1_t = aux1[:, i, :]
-            if aux2 == None:
+            if aux2 is None:
                 a2_t = None
             else:
                 a2_t = aux2[:, i, :]
-            if aux3 == None:
+            if aux3 is None:
                 a3_t = None
             else:
                 a3_t = aux3[:, i, :]

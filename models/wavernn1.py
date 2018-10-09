@@ -37,14 +37,14 @@ class Model(nn.Module) :
     def preview_upsampling(self, mels) :
         return self.upsample(mels)
 
-    def forward_generate(self, mels, save_path, deterministic=False, use_half=False):
+    def forward_generate(self, mels, save_path, deterministic=False, use_half=False, verbose=False):
         self.eval()
         with torch.no_grad() :
             mels = torch.FloatTensor(mels).cuda().unsqueeze(0)
             if use_half:
                 mels = mels.half()
             cond = self.upsample(mels)
-            output = self.wavernn.generate(cond, None, None, None, use_half=use_half)
+            output = self.wavernn.generate(cond, None, None, None, use_half=use_half, verbose=verbose)
         librosa.output.write_wav(save_path, output, sample_rate)
         self.train()
         return output
@@ -57,9 +57,9 @@ class Model(nn.Module) :
     def load_state_dict(self, dict):
         return super().load_state_dict(upgrade_state_dict(dict))
 
-    def do_train(self, paths, dataset, optimiser, epochs, batch_size, seq_len, step, lr=1e-4) :
-
-        optimiser = apex.fp16_utils.FP16_Optimizer(optimiser, dynamic_loss_scale=True)
+    def do_train(self, paths, dataset, optimiser, epochs, batch_size, seq_len, step, lr=1e-4, valid_ids=[], use_half=False):
+        if use_half:
+            optimiser = apex.fp16_utils.FP16_Optimizer(optimiser, dynamic_loss_scale=True)
         for p in optimiser.param_groups : p['lr'] = lr
         criterion = nn.NLLLoss().cuda()
         k = 0
@@ -78,7 +78,10 @@ class Model(nn.Module) :
 
             for i, (x, m, y_coarse, y_fine) in enumerate(trn_loader) :
 
-                x, m, y_coarse, y_fine = x.cuda().half(), m.cuda().half(), y_coarse.cuda(), y_fine.cuda()
+                x, m, y_coarse, y_fine = x.cuda(), m.cuda(), y_coarse.cuda(), y_fine.cuda()
+                if use_half:
+                    x = x.half()
+                    m = m.half()
 
                 p_c, p_f = self(x, m)
                 loss_c = criterion(p_c.transpose(1, 2).float(), y_coarse)
@@ -86,8 +89,10 @@ class Model(nn.Module) :
                 loss = loss_c + loss_f
 
                 optimiser.zero_grad()
-                #loss.backward()
-                optimiser.backward(loss)
+                if use_half:
+                    optimiser.backward(loss)
+                else:
+                    loss.backward()
                 optimiser.step()
                 running_loss_c += loss_c.item()
                 running_loss_f += loss_f.item()
@@ -109,8 +114,9 @@ class Model(nn.Module) :
             if k > saved_k + 50:
                 torch.save(self.state_dict(), paths.model_hist_path(step))
                 saved_k = k
+                self.do_generate(paths, step, dataset.path, valid_ids)
 
-    def do_generate(self, paths, step, data_path, test_ids, deterministic=False, use_half=False):
+    def do_generate(self, paths, step, data_path, test_ids, deterministic=False, use_half=False, verbose=False):
         global output
         k = step // 1000
         test_mels = [np.load(f'{data_path}/mel/{id}.npy') for id in test_ids]
@@ -120,7 +126,7 @@ class Model(nn.Module) :
             logger.log('Generating: %i/%i' % (i+1, len(test_ids)))
             gt = 2 * gt.astype(np.float32) / (2**env.bits - 1.) - 1.
             librosa.output.write_wav(f'{paths.gen_path()}/{k}k_steps_{i}_target.wav', gt, sr=sample_rate)
-            output = self.forward_generate(mel, f'{paths.gen_path()}/{k}k_steps_{i}_generated.wav', deterministic, use_half=use_half)
+            output = self.forward_generate(mel, f'{paths.gen_path()}/{k}k_steps_{i}_generated.wav', deterministic, use_half=use_half, verbose=verbose)
 
 def upgrade_state_dict(state_dict):
     out_dict = {}
