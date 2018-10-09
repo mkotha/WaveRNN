@@ -37,15 +37,14 @@ class Model(nn.Module) :
     def preview_upsampling(self, mels) :
         return self.upsample(mels)
 
-    def forward_generate(self, mels, save_path, deterministic=False, use_half=False, verbose=False):
+    def forward_generate(self, mels, deterministic=False, use_half=False, verbose=False):
+        n = mels.size(0)
+        if use_half:
+            mels = mels.half()
         self.eval()
         with torch.no_grad() :
-            mels = torch.FloatTensor(mels).cuda().unsqueeze(0)
-            if use_half:
-                mels = mels.half()
             cond = self.upsample(mels)
             output = self.wavernn.generate(cond, None, None, None, use_half=use_half, verbose=verbose)
-        librosa.output.write_wav(save_path, output, sample_rate)
         self.train()
         return output
 
@@ -120,13 +119,20 @@ class Model(nn.Module) :
         global output
         k = step // 1000
         test_mels = [np.load(f'{data_path}/mel/{id}.npy') for id in test_ids]
-        ground_truth = [np.load(f'{data_path}/quant/{id}.npy') for id in test_ids]
+        maxlen = max([x.shape[1] for x in test_mels])
+        logger.log(f'maxlen = {maxlen}')
+        aligned = [torch.cat([torch.FloatTensor(x), torch.zeros(80, maxlen-x.shape[1]+1)], dim=1) for x in test_mels]
+        for a in aligned:
+            logger.log(f'aligned[i]: {a.size()}')
+        out = self.forward_generate(torch.stack(aligned).cuda(), deterministic, use_half=use_half, verbose=verbose)
+
         os.makedirs(paths.gen_path(), exist_ok=True)
-        for i, (gt, mel) in enumerate(zip(ground_truth, test_mels)) :
-            logger.log('Generating: %i/%i' % (i+1, len(test_ids)))
-            gt = 2 * gt.astype(np.float32) / (2**env.bits - 1.) - 1.
+        for i, id in enumerate(test_ids):
+            gt = np.load(f'{data_path}/quant/{id}.npy')
+            gt = (gt.astype(np.float32) + 0.5) / (2**15 - 0.5)
             librosa.output.write_wav(f'{paths.gen_path()}/{k}k_steps_{i}_target.wav', gt, sr=sample_rate)
-            output = self.forward_generate(mel, f'{paths.gen_path()}/{k}k_steps_{i}_generated.wav', deterministic, use_half=use_half, verbose=verbose)
+            audio = out[i][:len(gt)].cpu().numpy()
+            librosa.output.write_wav(f'{paths.gen_path()}/{k}k_steps_{i}_generated.wav', audio, sr=sample_rate)
 
 def upgrade_state_dict(state_dict):
     out_dict = {}
