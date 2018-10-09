@@ -26,16 +26,16 @@ class Model(nn.Module) :
         self.wavernn = WaveRNN(rnn_dims, fc_dims, 128, 0)
         self.vq = VectorQuant(1, 512, 128, normalize=normalize_vq)
         encoder_layers = [
-            (2, 4, False),
-            (2, 4, False),
-            (2, 4, False),
-            (2, 4, False),
-            (2, 4, False),
-            (2, 4, False),
-            (2, 4, True),
-            (2, 4, True),
-            (2, 4, True),
-            (2, 4, True),
+            (2, 4, 1),
+            (2, 4, 1),
+            (2, 4, 1),
+            (2, 4, 1),
+            (2, 4, 1),
+            (2, 4, 1),
+            (1, 4, 2),
+            (1, 4, 4),
+            (1, 4, 8),
+            (1, 4, 16),
             ]
         self.encoder = DownsamplingEncoder(128, encoder_layers)
         self.frame_advantage = 4

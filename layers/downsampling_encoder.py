@@ -16,16 +16,10 @@ class DownsamplingEncoder(nn.Module):
         self.convs_1x1 = nn.ModuleList()
         self.layer_specs = layer_specs
         prev_channels = 1
-        dilation_factor = 1
         total_scale = 1
         pad_left = 0
         self.skips = []
-        for scale, ksz, dilate in layer_specs:
-            if dilate:
-                dilation_factor *= scale
-                stride = 1
-            else:
-                stride = scale
+        for stride, ksz, dilation_factor in layer_specs:
             conv_wide = nn.Conv1d(prev_channels, 2 * channels, ksz, stride=stride, dilation=dilation_factor)
             wsize = 2.967 / math.sqrt(ksz * prev_channels)
             conv_wide.weight.data.uniform_(-wsize, wsize)
@@ -41,8 +35,7 @@ class DownsamplingEncoder(nn.Module):
             pad_left += total_scale * skip
             logger.log(f'pad += {total_scale} * {ksz-stride} * {dilation_factor}')
             self.skips.append(skip)
-            if not dilate:
-                total_scale *= scale
+            total_scale *= stride
         self.pad_left = pad_left
         self.total_scale = total_scale
 
@@ -54,7 +47,7 @@ class DownsamplingEncoder(nn.Module):
         #logger.log(f'sd[samples] {x.std()}')
         for i, stuff in enumerate(zip(self.convs_wide, self.convs_1x1, self.layer_specs, self.skips)):
             conv_wide, conv_1x1, layer_spec, skip = stuff
-            scale, ksz, dilate = layer_spec
+            stride, ksz, dilation_factor = layer_spec
 
             x1 = conv_wide(x)
             #logger.log(f'sd[conv.s] {x1.std()}')
@@ -66,7 +59,7 @@ class DownsamplingEncoder(nn.Module):
             if i == 0:
                 x = x3
             else:
-                x = x3 + x[:, :, skip:skip+x3.size(2)*scale].view(x.size(0), x3.size(1), x3.size(2), -1)[:, :, :, -1]
+                x = x3 + x[:, :, skip:skip+x3.size(2)*stride].view(x.size(0), x3.size(1), x3.size(2), -1)[:, :, :, -1]
             #logger.log(f'sd[out] {x.std()}')
         x = self.final_conv_1(F.relu(self.final_conv_0(x)))
         #logger.log(f'sd[final] {x.std()}')
