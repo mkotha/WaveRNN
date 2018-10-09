@@ -28,7 +28,6 @@ class Model(nn.Module) :
         encoder_layers = [
             (2, 4, 1),
             (2, 4, 1),
-            (1, 4, 1),
             (2, 4, 1),
             (1, 4, 1),
             (2, 4, 1),
@@ -36,6 +35,7 @@ class Model(nn.Module) :
             (2, 4, 1),
             (1, 4, 1),
             (2, 4, 1),
+            (1, 4, 1),
             ]
         self.encoder = DownsamplingEncoder(128, encoder_layers)
         self.frame_advantage = 4
