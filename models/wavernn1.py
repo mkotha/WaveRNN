@@ -120,10 +120,7 @@ class Model(nn.Module) :
         k = step // 1000
         test_mels = [np.load(f'{data_path}/mel/{id}.npy') for id in test_ids]
         maxlen = max([x.shape[1] for x in test_mels])
-        logger.log(f'maxlen = {maxlen}')
         aligned = [torch.cat([torch.FloatTensor(x), torch.zeros(80, maxlen-x.shape[1]+1)], dim=1) for x in test_mels]
-        for a in aligned:
-            logger.log(f'aligned[i]: {a.size()}')
         out = self.forward_generate(torch.stack(aligned).cuda(), deterministic, use_half=use_half, verbose=verbose)
 
         os.makedirs(paths.gen_path(), exist_ok=True)
