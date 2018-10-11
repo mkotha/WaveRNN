@@ -112,7 +112,7 @@ class Model(nn.Module) :
         saved_k = 0
         pad_left = self.pad_left()
         pad_right = self.pad_right()
-        window = 16 * self.total_scale()
+        window = 8 * 16 * self.total_scale()
         logger.log(f'pad_left={pad_left}, pad_right={pad_right}, total_scale={self.total_scale()}')
 
         for e in range(epochs) :
