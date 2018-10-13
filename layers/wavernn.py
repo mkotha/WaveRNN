@@ -28,9 +28,9 @@ class WaveRNN(nn.Module) :
         i2h_mask = torch.cat([coarse_mask, torch.ones(self.half_rnn_dims, self.feat_dims + self.aux_dims + 3)], dim=0)
         return torch.cat([i2h_mask, i2h_mask, i2h_mask], dim=0)
 
-    def forward(self, x, feat, aux1, aux2, aux3) :
+    def forward(self, x, feat, aux1=None, aux2=None, aux3=None) :
         x = torch.cat(filter_none([feat, aux1, x]), dim=2)
-        h, _ = self.gru(x)
+        h, h_n = self.gru(x)
 
         h_c, h_f = torch.split(h, self.half_rnn_dims, dim=2)
 
@@ -42,7 +42,7 @@ class WaveRNN(nn.Module) :
         p_f = F.log_softmax(self.fc4(o_f), dim=2)
         #logger.log(f'o_f: {o_f.var()} p_f: {p_f.var()}')
 
-        return (p_c, p_f)
+        return p_c, p_f, h_n.squeeze(0)
 
     def after_update(self):
         with torch.no_grad():
@@ -52,7 +52,7 @@ class WaveRNN(nn.Module) :
         return WaveRNNCell(self.gru, self.rnn_dims,
                 self.fc1, self.fc2, self.fc3, self.fc4)
 
-    def generate(self, feat, aux1, aux2, aux3, deterministic=False, use_half=False, verbose=False, seq_len=None, batch_size=None):
+    def generate(self, feat, aux1=None, aux2=None, aux3=None, deterministic=False, use_half=False, verbose=False, seq_len=None, batch_size=None):
         start = time.time()
         if seq_len is None:
             seq_len = feat.size(1)

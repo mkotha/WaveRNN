@@ -66,16 +66,14 @@ def collate_samples(left_pad, window, right_pad, batch):
 
     return coarse, fine, coarse_f, fine_f
 
-def collate(batch) :
-    pad = 2
-    mel_win = seq_len // hop_length + 2 * pad
-    max_offsets = [x[0].shape[-1] - (mel_win + 2 * pad) for x in batch]
+def collate(left_pad, mel_win, right_pad, batch) :
+    max_offsets = [x[0].shape[-1] - mel_win for x in batch]
     mel_offsets = [np.random.randint(0, offset) for offset in max_offsets]
-    sig_offsets = [(offset + pad) * hop_length for offset in mel_offsets]
+    sig_offsets = [offset * hop_length for offset in mel_offsets]
 
-    mels = [x[0][:, mel_offsets[i]:mel_offsets[i] + mel_win]             for i, x in enumerate(batch)]
+    mels = [x[0][:, mel_offsets[i]:mel_offsets[i] + mel_win] for i, x in enumerate(batch)]
 
-    wave16 = [x[1][sig_offsets[i]:sig_offsets[i] + seq_len + 1]               for i, x in enumerate(batch)]
+    wave16 = [np.concatenate([np.zeros(left_pad, dtype=np.int16), x[1], np.zeros(right_pad, dtype=np.int16)])[sig_offsets[i]:sig_offsets[i] + left_pad + 64 * mel_win + right_pad] for i, x in enumerate(batch)]
 
     mels = np.stack(mels).astype(np.float32)
     wave16 = np.stack(wave16).astype(np.int64) + 2**15
@@ -89,9 +87,7 @@ def collate(batch) :
     coarse_f = coarse.float() / 127.5 - 1.
     fine_f = fine.float() / 127.5 - 1.
 
-    x = torch.cat([coarse_f[:, :-1].unsqueeze(-1), fine_f[:, :-1].unsqueeze(-1), coarse_f[:, 1:].unsqueeze(-1)], dim=2)
-
-    return x, mels, coarse[:, 1:], fine[:, 1:]
+    return mels, coarse, fine, coarse_f, fine_f
 
 def restore(path, model):
     model.load_state_dict(torch.load(path))
