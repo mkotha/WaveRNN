@@ -93,7 +93,7 @@ class WaveRNN(nn.Module) :
             if deterministic:
                 c_cat = torch.argmax(o_c, dim=1).to(torch.float32)
             else:
-                posterior_c = F.softmax(o_c, dim=1)
+                posterior_c = F.softmax(o_c.float(), dim=1)
                 distrib_c = torch.distributions.Categorical(posterior_c)
                 c_cat = distrib_c.sample().float()
             c_val_new = c_cat / 127.5 - 1.0
@@ -105,7 +105,7 @@ class WaveRNN(nn.Module) :
             if deterministic:
                 f_cat = torch.argmax(o_f, dim=1).to(torch.float32)
             else:
-                posterior_f = F.softmax(o_f, dim=1)
+                posterior_f = F.softmax(o_f.float(), dim=1)
                 distrib_f = torch.distributions.Categorical(posterior_f)
                 f_cat = distrib_f.sample().float()
             f_val = f_cat / 127.5 - 1.0

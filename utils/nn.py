@@ -9,5 +9,7 @@ def sample_softmax(score):
     Output:
         sample: (N) long tensor, 0 <= sample < D
     """
-    posterior = F.softmax(score, dim=1)
+
+    # Softmax tends to overflow fp16, so we use fp32 here.
+    posterior = F.softmax(score.float(), dim=1)
     return torch.distributions.Categorical(posterior).sample()

@@ -113,7 +113,7 @@ class Model(nn.Module) :
             if k > saved_k + 50:
                 torch.save(self.state_dict(), paths.model_hist_path(step))
                 saved_k = k
-                self.do_generate(paths, step, dataset.path, valid_ids)
+                self.do_generate(paths, step, dataset.path, valid_ids, use_half=use_half)
 
     def do_generate(self, paths, step, data_path, test_ids, deterministic=False, use_half=False, verbose=False):
         k = step // 1000

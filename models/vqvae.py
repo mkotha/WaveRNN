@@ -225,7 +225,7 @@ class Model(nn.Module) :
         maxlen = max([len(x) for x in extended])
         aligned = [torch.cat([torch.FloatTensor(x), torch.zeros(maxlen-len(x))]) for x in extended]
         os.makedirs(paths.gen_path(), exist_ok=True)
-        out = self.forward_generate(torch.stack(aligned).cuda(), verbose=verbose)
+        out = self.forward_generate(torch.stack(aligned).cuda(), verbose=verbose, use_half=use_half)
         logger.log(f'out: {out.size()}')
         for i, x in enumerate(gt) :
             audio = out[i][:len(x)].cpu().numpy()

@@ -112,7 +112,7 @@ class Overtone(nn.Module):
         if cond is None:
             padded_cond = None
         else:
-            padded_cond = torch.cat([torch.zeros(n, self.cond_pad, cond.size(2)).cuda(), cond], dim=1)
+            padded_cond = torch.cat([cond.new_zeros(n, self.cond_pad, cond.size(2)), cond], dim=1)
         r0 = self.rnn0(torch.cat(filter_none([c2, padded_cond]), dim=2))[0]
         r1 = self.rnn1(torch.cat([c1[:, (self.delay_r0 - self.delay_c1) // 16:], r0], dim=2))[0]
         r2 = self.rnn2(torch.cat([c0[:, (self.delay_r1 - self.delay_c0) // 4:], r1], dim=2))[0]
@@ -125,21 +125,25 @@ class Overtone(nn.Module):
             n = cond.size(0)
         if seq_len is None:
             seq_len = cond.size(1) * 64
+        if use_half:
+            std_tensor = torch.tensor([]).cuda().half()
+        else:
+            std_tensor = torch.tensor([]).cuda()
 
         # Warmup
-        c0 = self.conv0(torch.zeros(n, 10, 1).cuda()).repeat(1, 10, 1)
+        c0 = self.conv0(std_tensor.new_zeros(n, 10, 1)).repeat(1, 10, 1)
         c1 = self.conv1(c0).repeat(1, 10, 1)
         c2 = self.conv2(c1)
 
         if cond is None:
             pad_cond = None
         else:
-            pad_cond = torch.zeros(n, 85, cond.size(2)).cuda()
+            pad_cond = std_tensor.new_zeros(n, 85, cond.size(2))
         #logger.log(f'pad_cond: {pad_cond.size()}')
         r0, h0 = self.rnn0(torch.cat(filter_none([c2.repeat(1, 85, 1), pad_cond]), dim=2))
         r1, h1 = self.rnn1(torch.cat([c1.repeat(1, 9, 1)[:, :84], r0], dim=2))
         r2, h2 = self.rnn2(torch.cat([c0.repeat(1, 8, 1), r1], dim=2))
-        h3 = self.wavernn(torch.zeros(n, 64, 3).cuda(), r2)[2]
+        h3 = self.wavernn(std_tensor.new_zeros(n, 64, 3), r2)[2]
 
         # Create cells
         cell0 = self.rnn0.to_cell()
@@ -148,10 +152,10 @@ class Overtone(nn.Module):
         wcell = self.wavernn.to_cell()
 
         # Main loop!
-        coarse = torch.zeros(n, 10, 1).cuda()
-        c_val = torch.zeros(n).cuda()
-        f_val = torch.zeros(n).cuda()
-        zero = torch.zeros(n).cuda()
+        coarse = std_tensor.new_zeros(n, 10, 1)
+        c_val = std_tensor.new_zeros(n)
+        f_val = std_tensor.new_zeros(n)
+        zero = std_tensor.new_zeros(n)
         output = []
         for t in range(seq_len):
             #logger.log(f't = {t}')
@@ -205,12 +209,12 @@ class Overtone(nn.Module):
             x = torch.stack([c_val, f_val, zero], dim=1)
             o_c = wcell.forward_c(x, wcond, None, None, h3)
             c_cat = utils.nn.sample_softmax(o_c).float()
-            c_val_new = c_cat / 127.5 - 1.0
+            c_val_new = (c_cat / 127.5 - 1.0).to(std_tensor)
 
             x = torch.stack([c_val, f_val, c_val_new], dim=1)
             o_f, h3 = wcell.forward_f(x, wcond, None, None, h3)
             f_cat = utils.nn.sample_softmax(o_f).float()
-            f_val = f_cat / 127.5 - 1.0
+            f_val = (f_cat / 127.5 - 1.0).to(std_tensor)
             c_val = c_val_new
 
             sample = (c_cat * 256 + f_cat) / 32767.5 - 1.0
