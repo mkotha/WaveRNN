@@ -42,7 +42,7 @@ else:
 
 seq_len = hop_length * 5
 
-model_name = 'wavernn.14.overtone'
+model_name = 'wavernn.15.overtone'
 
 if platform.node().endswith('.ec2') or platform.node().startswith('ip-'): # Running on EC2
     DATA_PATH = '/home/ubuntu/dataset/lj2'

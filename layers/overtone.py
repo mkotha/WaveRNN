@@ -115,7 +115,7 @@ class Overtone(nn.Module):
             padded_cond = torch.cat([torch.zeros(n, self.cond_pad, cond.size(2)).cuda(), cond], dim=1)
         r0 = self.rnn0(torch.cat(filter_none([c2, padded_cond]), dim=2))[0]
         r1 = self.rnn1(torch.cat([c1[:, (self.delay_r0 - self.delay_c1) // 16:], r0], dim=2))[0]
-        r2 = self.rnn1(torch.cat([c0[:, (self.delay_r1 - self.delay_c0) // 4:], r1], dim=2))[0]
+        r2 = self.rnn2(torch.cat([c0[:, (self.delay_r1 - self.delay_c0) // 4:], r1], dim=2))[0]
         p_c, p_f, _ = self.wavernn(x[:, self.delay_r2:], r2, None, None, None)
         return p_c[:, self.warmup_steps:], p_f[:, self.warmup_steps:]
 
@@ -136,10 +136,10 @@ class Overtone(nn.Module):
         else:
             pad_cond = torch.zeros(n, 85, cond.size(2)).cuda()
         #logger.log(f'pad_cond: {pad_cond.size()}')
-        r0, h0 = self.rnn0(torch.cat([pad_cond, c2.repeat(1, 85, 1)], dim=2))
-        r1, h1 = self.rnn1(torch.cat([r0[:, :84], c1.repeat(1, 9, 1)[:, :84]], dim=2))
-        r2, h2 = self.rnn1(torch.cat([r1[:, :80], c0.repeat(1, 8, 1)], dim=2))
-        h3 = self.wavernn(torch.zeros(n, 64, 3).cuda(), r2[:, :64])[2]
+        r0, h0 = self.rnn0(torch.cat([c2.repeat(1, 85, 1), pad_cond], dim=2))
+        r1, h1 = self.rnn1(torch.cat([c1.repeat(1, 9, 1)[:, :84], r0], dim=2))
+        r2, h2 = self.rnn2(torch.cat([c0.repeat(1, 8, 1), r1], dim=2))
+        h3 = self.wavernn(torch.zeros(n, 64, 3).cuda(), r2)[2]
 
         # Create cells
         cell0 = self.rnn0.to_cell()
@@ -178,7 +178,7 @@ class Overtone(nn.Module):
                     if t2 == 0:
                         #logger.log('read c1')
                         #logger.log('written to c2')
-                        c2 = self.conv1(c1).squeeze(1)
+                        c2 = self.conv2(c1).squeeze(1)
                         c1[:, :-4].copy_(c1[:, 4:])
 
                         #logger.log('read c2')
