@@ -6,12 +6,11 @@ from torch import optim
 from torch.utils.data import DataLoader
 import torch.nn as nn
 import torch.nn.functional as F
-from utils import *
 from utils.dsp import *
 import sys
 import time
 import apex
-from layers.wavernn import WaveRNN
+from layers.overtone import Overtone
 from layers.upsample import UpsampleNetwork
 from layers.vector_quant import VectorQuant
 from layers.downsampling_encoder import DownsamplingEncoder
@@ -22,20 +21,20 @@ class Model(nn.Module) :
     def __init__(self, rnn_dims, fc_dims):
         super().__init__()
         self.n_classes = 256
-        self.wavernn = WaveRNN(rnn_dims, fc_dims, 0, 0)
+        self.overtone = Overtone(rnn_dims, fc_dims, 0)
         self.num_params()
 
     def forward(self, x):
-        p_c, p_f, _h = self.wavernn(x, None, None, None, None)
+        p_c, p_f = self.overtone(x, None)
         return p_c, p_f
 
     def after_update(self):
-        self.wavernn.after_update()
+        self.overtone.after_update()
 
     def generate(self, batch_size, seq_len, deterministic=False):
         self.eval()
         with torch.no_grad() :
-            output = self.wavernn.generate(None, None, None, None, seq_len=seq_len, batch_size=batch_size)
+            output = self.overtone.generate(None, seq_len=seq_len, n=batch_size)
         self.train()
         return output
 
@@ -52,11 +51,12 @@ class Model(nn.Module) :
         criterion = nn.NLLLoss().cuda()
         k = 0
         saved_k = 0
+        pad_left = self.overtone.pad()
         time_span = 16 * 64
 
         for e in range(epochs) :
 
-            trn_loader = DataLoader(dataset, collate_fn=lambda batch: env.collate_samples(1, time_span, 0, batch), batch_size=batch_size,
+            trn_loader = DataLoader(dataset, collate_fn=lambda batch: env.collate_samples(pad_left, time_span, 1, batch), batch_size=batch_size,
                                     num_workers=2, shuffle=True, pin_memory=True)
 
             start = time.time()
@@ -79,8 +79,8 @@ class Model(nn.Module) :
                     fine_f[:, :-1].unsqueeze(-1),
                     coarse_f[:, 1:].unsqueeze(-1),
                     ], dim=2)
-                y_coarse = coarse[:, 1:]
-                y_fine = fine[:, 1:]
+                y_coarse = coarse[:, pad_left+1:]
+                y_fine = fine[:, pad_left+1:]
 
                 p_c, p_f = self(x)
                 loss_c = criterion(p_c.transpose(1, 2).float(), y_coarse)
@@ -115,15 +115,17 @@ class Model(nn.Module) :
             torch.save(self.state_dict(), paths.model_path())
             np.save(paths.step_path(), step)
             logger.log_current_status()
-            logger.log(f' <saved>; w[0][0] = {self.wavernn.gru.weight_ih_l0[0][0]}')
+            logger.log(f' <saved>; w[0][0] = {self.overtone.wavernn.gru.weight_ih_l0[0][0]}')
             if k > saved_k + 50:
                 torch.save(self.state_dict(), paths.model_hist_path(step))
                 saved_k = k
                 self.do_generate(paths, step, dataset.path, valid_ids)
+                logger.log('done generation')
 
     def do_generate(self, paths, step, data_path, test_ids, deterministic=False, use_half=False, verbose=False):
         out = self.generate(len(test_ids), 100000)
         k = step // 1000
+        os.makedirs(paths.gen_path(), exist_ok=True)
         for i in range(len(test_ids)) :
             audio = out[i].cpu().numpy()
             librosa.output.write_wav(f'{paths.gen_path()}/{k}k_steps_{i}_generated.wav', audio, sr=sample_rate)

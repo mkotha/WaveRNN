@@ -136,7 +136,7 @@ class Overtone(nn.Module):
         else:
             pad_cond = torch.zeros(n, 85, cond.size(2)).cuda()
         #logger.log(f'pad_cond: {pad_cond.size()}')
-        r0, h0 = self.rnn0(torch.cat([c2.repeat(1, 85, 1), pad_cond], dim=2))
+        r0, h0 = self.rnn0(torch.cat(filter_none([c2.repeat(1, 85, 1), pad_cond]), dim=2))
         r1, h1 = self.rnn1(torch.cat([c1.repeat(1, 9, 1)[:, :84], r0], dim=2))
         r2, h2 = self.rnn2(torch.cat([c0.repeat(1, 8, 1), r1], dim=2))
         h3 = self.wavernn(torch.zeros(n, 64, 3).cuda(), r2)[2]
