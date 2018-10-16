@@ -35,7 +35,12 @@ class VectorQuant(nn.Module):
         #logger.log(f'std[x] = {x.std()}')
         x1 = x.reshape(x.size(0) * x.size(1), x.size(2), 1, x.size(3))
         # x1: (N*samples, n_channels, 1, vec_len) numeric tensor
-        index = (x1 - embedding).norm(dim=3).argmin(dim=2)
+
+        # Perform chunking to avoid overflowing GPU RAM.
+        index_chunks = []
+        for x1_chunk in x1.split(512, dim=0):
+            index_chunks.append((x1_chunk - embedding).norm(dim=3).argmin(dim=2))
+        index = torch.cat(index_chunks, dim=0)
         # index: (N*samples, n_channels) long tensor
         if True: # compute the entropy
             hist = index.float().cpu().histc(bins=self.n_classes, min=-0.5, max=self.n_classes - 0.5)
