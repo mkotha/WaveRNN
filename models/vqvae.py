@@ -15,6 +15,7 @@ from layers.vector_quant import VectorQuant
 from layers.downsampling_encoder import DownsamplingEncoder
 import utils.env as env
 import utils.logger as logger
+import random
 
 class Model(nn.Module) :
     def __init__(self, rnn_dims, fc_dims, upsample_factors, normalize_vq=False):
@@ -112,7 +113,8 @@ class Model(nn.Module) :
         pad_left = self.pad_left()
         pad_left_encoder = self.pad_left_encoder()
         pad_left_decoder = self.pad_left_decoder()
-        pad_right = self.pad_right()
+        extra_pad_right = 127
+        pad_right = self.pad_right() + extra_pad_right
         window = 16 * self.total_scale()
         logger.log(f'pad_left={pad_left_encoder}|{pad_left_decoder}, pad_right={pad_right}, total_scale={self.total_scale()}')
 
@@ -147,7 +149,14 @@ class Model(nn.Module) :
                 y_coarse = coarse[:, pad_left+1:1-pad_right]
                 y_fine = fine[:, pad_left+1:1-pad_right]
 
-                p_cf, vq_pen, encoder_pen, entropy = self(x, coarse_f[:, pad_left-pad_left_encoder:])
+                # Randomly translate the input to the encoder to encourage
+                # translational invariance
+                total_len = coarse_f.size(1)
+                translated = []
+                for j in range(coarse_f.size(0)):
+                    shift = random.randrange(256) - 128
+                    translated.append(coarse_f[j, pad_left-pad_left_encoder+shift:total_len-extra_pad_right+shift])
+                p_cf, vq_pen, encoder_pen, entropy = self(x, torch.stack(translated, dim=0))
                 p_c, p_f = p_cf
                 loss_c = criterion(p_c.transpose(1, 2).float(), y_coarse)
                 loss_f = criterion(p_f.transpose(1, 2).float(), y_fine)
