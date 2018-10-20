@@ -90,7 +90,8 @@ else:
         model_basename = model_name.split('_')[0]
         if prev_model_basename != model_basename and not args.force:
             sys.exit(f'refusing to load {args.load} because its basename ({prev_model_basename}) is not {model_basename}')
-        paths = env.Paths(prev_model_name, DATA_PATH)
+        if args.generate:
+            paths = env.Paths(prev_model_name, DATA_PATH)
         prev_path = args.load
     else:
         prev_path = paths.model_path()
