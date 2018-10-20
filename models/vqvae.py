@@ -196,8 +196,9 @@ class Model(nn.Module) :
     def do_generate(self, paths, step, data_path, test_ids, deterministic=False, use_half=False, verbose=False):
         k = step // 1000
         gt = [np.load(f'{data_path}/quant/{id}.npy') for id in test_ids]
+        coarse = [((x.astype(np.int64) + 2**15) // 256).astype(np.float32) / 127.5 - 1.0 for x in gt]
         gt = [(x.astype(np.float32) + 0.5) / (2**15 - 0.5) for x in gt]
-        extended = [np.concatenate([np.zeros(self.pad_left_encoder(), dtype=np.float32), x, np.zeros(self.pad_right(), dtype=np.float32)]) for x in gt]
+        extended = [np.concatenate([np.zeros(self.pad_left_encoder(), dtype=np.float32), x, np.zeros(self.pad_right(), dtype=np.float32)]) for x in coarse]
         maxlen = max([len(x) for x in extended])
         aligned = [torch.cat([torch.FloatTensor(x), torch.zeros(maxlen-len(x))]) for x in extended]
         os.makedirs(paths.gen_path(), exist_ok=True)
