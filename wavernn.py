@@ -18,6 +18,7 @@ import platform
 import re
 import utils.logger as logger
 import time
+import subprocess
 
 parser = argparse.ArgumentParser(description='Train or run some neural net')
 parser.add_argument('--generate', '-g', action='store_true')
@@ -46,6 +47,7 @@ model_name = 'vq.29.phase'
 
 if platform.node().endswith('.ec2') or platform.node().startswith('ip-'): # Running on EC2
     DATA_PATH = '/home/ubuntu/dataset/lj2'
+    subprocess.call(['./preload.sh', DATA_PATH])
 else:
     DATA_PATH = '/mnt/backup/dataset/lj2'
 
