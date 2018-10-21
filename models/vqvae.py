@@ -167,12 +167,15 @@ class Model(nn.Module) :
                     optimiser.backward(loss)
                 else:
                     loss.backward()
-                    for name, param in self.named_parameters():
-                        param_max_grad = param.grad.data.abs().max()
-                        if param_max_grad > max_grad:
-                            max_grad = param_max_grad
-                            max_grad_name = name
-                    nn.utils.clip_grad_norm_(self.parameters(), 100, norm_type='inf')
+                    # Commenting out gradient clipping because it's very
+                    # expensive.
+                    #
+                    #for name, param in self.named_parameters():
+                    #    param_max_grad = param.grad.data.abs().max()
+                    #    if param_max_grad > max_grad:
+                    #        max_grad = param_max_grad
+                    #        max_grad_name = name
+                    #nn.utils.clip_grad_norm_(self.parameters(), 100, norm_type='inf')
                 optimiser.step()
                 running_loss_c += loss_c.item()
                 running_loss_f += loss_f.item()
