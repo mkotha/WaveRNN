@@ -160,7 +160,8 @@ class Model(nn.Module) :
                 p_c, p_f = p_cf
                 loss_c = criterion(p_c.transpose(1, 2).float(), y_coarse)
                 loss_f = criterion(p_f.transpose(1, 2).float(), y_fine)
-                loss = loss_c + loss_f + vq_pen + 0.01 * encoder_pen
+                encoder_weight = 0.01 * min(1, max(0.1, step / 1000 - 1))
+                loss = loss_c + loss_f + vq_pen + encoder_weight * encoder_pen
 
                 optimiser.zero_grad()
                 if use_half:
