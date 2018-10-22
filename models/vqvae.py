@@ -134,12 +134,23 @@ class Model(nn.Module) :
 
             iters = len(trn_loader)
 
-            for i, (coarse, fine, coarse_f, fine_f) in enumerate(trn_loader) :
+            for i, wave16 in enumerate(trn_loader) :
 
-                coarse, fine, coarse_f, fine_f = coarse.cuda(), fine.cuda(), coarse_f.cuda(), fine_f.cuda()
+                wave16 = wave16.cuda()
+
+                coarse = (wave16 + 2**15) // 256
+                fine = (wave16 + 2**15) % 256
+
+                coarse_f = coarse.float() / 127.5 - 1.
+                fine_f = fine.float() / 127.5 - 1.
+                total_f = (wave16.float() + 0.5) / 32767.5
+
+                noisy_f = total_f * (0.02 * torch.randn(total_f.size(0), 1).cuda()).exp() + 0.003 * torch.randn_like(total_f)
+
                 if use_half:
                     coarse_f = coarse_f.half()
                     fine_f = fine_f.half()
+                    noisy_f = noisy_f.half()
 
                 x = torch.cat([
                     coarse_f[:, pad_left-pad_left_decoder:-pad_right].unsqueeze(-1),
@@ -155,7 +166,7 @@ class Model(nn.Module) :
                 translated = []
                 for j in range(coarse_f.size(0)):
                     shift = random.randrange(256) - 128
-                    translated.append(coarse_f[j, pad_left-pad_left_encoder+shift:total_len-extra_pad_right+shift])
+                    translated.append(noisy_f[j, pad_left-pad_left_encoder+shift:total_len-extra_pad_right+shift])
                 p_cf, vq_pen, encoder_pen, entropy = self(x, torch.stack(translated, dim=0))
                 p_c, p_f = p_cf
                 loss_c = criterion(p_c.transpose(1, 2).float(), y_coarse)
@@ -209,9 +220,8 @@ class Model(nn.Module) :
     def do_generate(self, paths, step, data_path, test_ids, deterministic=False, use_half=False, verbose=False):
         k = step // 1000
         gt = [np.load(f'{data_path}/quant/{id}.npy') for id in test_ids]
-        coarse = [((x.astype(np.int64) + 2**15) // 256).astype(np.float32) / 127.5 - 1.0 for x in gt]
         gt = [(x.astype(np.float32) + 0.5) / (2**15 - 0.5) for x in gt]
-        extended = [np.concatenate([np.zeros(self.pad_left_encoder(), dtype=np.float32), x, np.zeros(self.pad_right(), dtype=np.float32)]) for x in coarse]
+        extended = [np.concatenate([np.zeros(self.pad_left_encoder(), dtype=np.float32), x, np.zeros(self.pad_right(), dtype=np.float32)]) for x in gt]
         maxlen = max([len(x) for x in extended])
         aligned = [torch.cat([torch.FloatTensor(x), torch.zeros(maxlen-len(x))]) for x in extended]
         os.makedirs(paths.gen_path(), exist_ok=True)

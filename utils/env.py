@@ -54,17 +54,7 @@ def collate_samples(left_pad, window, right_pad, batch):
     offsets = [np.random.randint(0, offset) for offset in max_offsets]
 
     wave16 = [np.concatenate([np.zeros(left_pad, dtype=np.int16), x, np.zeros(right_pad, dtype=np.int16)])[offsets[i]:offsets[i] + left_pad + window + right_pad] for i, x in enumerate(samples)]
-    wave16 = np.stack(wave16).astype(np.int64) + 2**15
-    coarse = wave16 // 256
-    fine = wave16 % 256
-
-    coarse = torch.LongTensor(coarse)
-    fine = torch.LongTensor(fine)
-
-    coarse_f = coarse.float() / 127.5 - 1.
-    fine_f = fine.float() / 127.5 - 1.
-
-    return coarse, fine, coarse_f, fine_f
+    return torch.LongTensor(np.stack(wave16).astype(np.int64))
 
 def collate(left_pad, mel_win, right_pad, batch) :
     max_offsets = [x[0].shape[-1] - mel_win for x in batch]
