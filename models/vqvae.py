@@ -18,11 +18,14 @@ import utils.logger as logger
 import random
 
 class Model(nn.Module) :
-    def __init__(self, rnn_dims, fc_dims, upsample_factors, normalize_vq=False):
+    def __init__(self, rnn_dims, fc_dims, upsample_factors, normalize_vq=False,
+            noise_x=False, noise_y=False):
         super().__init__()
         self.n_classes = 256
         self.overtone = Overtone(rnn_dims, fc_dims, 128)
         self.vq = VectorQuant(1, 512, 128, normalize=normalize_vq)
+        self.noise_x = noise_x
+        self.noise_y = noise_y
         encoder_layers = [
             (2, 4, 1),
             (2, 4, 1),
@@ -126,7 +129,10 @@ class Model(nn.Module) :
         pad_left = self.pad_left()
         pad_left_encoder = self.pad_left_encoder()
         pad_left_decoder = self.pad_left_decoder()
-        extra_pad_right = 127
+        if self.noise_x:
+            extra_pad_right = 127
+        else:
+            extra_pad_right = 0
         pad_right = self.pad_right() + extra_pad_right
         window = 16 * self.total_scale()
         logger.log(f'pad_left={pad_left_encoder}|{pad_left_decoder}, pad_right={pad_right}, total_scale={self.total_scale()}')
@@ -158,7 +164,10 @@ class Model(nn.Module) :
                 fine_f = fine.float() / 127.5 - 1.
                 total_f = (wave16.float() + 0.5) / 32767.5
 
-                noisy_f = total_f * (0.02 * torch.randn(total_f.size(0), 1).cuda()).exp() + 0.003 * torch.randn_like(total_f)
+                if self.noise_y:
+                    noisy_f = total_f * (0.02 * torch.randn(total_f.size(0), 1).cuda()).exp() + 0.003 * torch.randn_like(total_f)
+                else:
+                    noisy_f = total_f
 
                 if use_half:
                     coarse_f = coarse_f.half()
@@ -173,14 +182,18 @@ class Model(nn.Module) :
                 y_coarse = coarse[:, pad_left+1:1-pad_right]
                 y_fine = fine[:, pad_left+1:1-pad_right]
 
-                # Randomly translate the input to the encoder to encourage
-                # translational invariance
-                total_len = coarse_f.size(1)
-                translated = []
-                for j in range(coarse_f.size(0)):
-                    shift = random.randrange(256) - 128
-                    translated.append(noisy_f[j, pad_left-pad_left_encoder+shift:total_len-extra_pad_right+shift])
-                p_cf, vq_pen, encoder_pen, entropy = self(x, torch.stack(translated, dim=0))
+                if self.noise_x:
+                    # Randomly translate the input to the encoder to encourage
+                    # translational invariance
+                    total_len = coarse_f.size(1)
+                    translated = []
+                    for j in range(coarse_f.size(0)):
+                        shift = random.randrange(256) - 128
+                        translated.append(noisy_f[j, pad_left-pad_left_encoder+shift:total_len-extra_pad_right+shift])
+                    translated = torch.stack(translated, dim=0)
+                else:
+                    translated = noisy_f[:, pad_left-pad_left_encoder:]
+                p_cf, vq_pen, encoder_pen, entropy = self(x, translated)
                 p_c, p_f = p_cf
                 loss_c = criterion(p_c.transpose(1, 2).float(), y_coarse)
                 loss_f = criterion(p_f.transpose(1, 2).float(), y_fine)
