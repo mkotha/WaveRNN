@@ -109,11 +109,7 @@ class Overtone(nn.Module):
         c0 = self.conv0(x_coarse)
         c1 = self.conv1(c0)
         c2 = self.conv2(c1)
-        if cond is None:
-            padded_cond = None
-        else:
-            padded_cond = torch.cat([cond.new_zeros(n, self.cond_pad, cond.size(2)), cond], dim=1)
-        r0 = self.rnn0(torch.cat(filter_none([c2, padded_cond]), dim=2))[0]
+        r0 = self.rnn0(torch.cat(filter_none([c2, cond]), dim=2))[0]
         r1 = self.rnn1(torch.cat([c1[:, (self.delay_r0 - self.delay_c1) // 16:], r0], dim=2))[0]
         r2 = self.rnn2(torch.cat([c0[:, (self.delay_r1 - self.delay_c0) // 4:], r1], dim=2))[0]
         p_c, p_f, _ = self.wavernn(x[:, self.delay_r2:], r2, None, None, None)
@@ -124,7 +120,7 @@ class Overtone(nn.Module):
         if n is None:
             n = cond.size(0)
         if seq_len is None:
-            seq_len = cond.size(1) * 64
+            seq_len = (cond.size(1) - self.cond_pad) * 64
         if use_half:
             std_tensor = torch.tensor([]).cuda().half()
         else:
@@ -138,7 +134,7 @@ class Overtone(nn.Module):
         if cond is None:
             pad_cond = None
         else:
-            pad_cond = std_tensor.new_zeros(n, 85, cond.size(2))
+            pad_cond = cond[:, :self.cond_pad]
         #logger.log(f'pad_cond: {pad_cond.size()}')
         r0, h0 = self.rnn0(torch.cat(filter_none([c2.repeat(1, 85, 1), pad_cond]), dim=2))
         r1, h1 = self.rnn1(torch.cat([c1.repeat(1, 9, 1)[:, :84], r0], dim=2))
@@ -190,7 +186,7 @@ class Overtone(nn.Module):
                         if cond is None:
                             inp0 = c2
                         else:
-                            inp0 = torch.cat([c2, cond[:, t // 64]], dim=1)
+                            inp0 = torch.cat([c2, cond[:, t // 64 + self.cond_pad]], dim=1)
                         r0, h0 = cell0(inp0, h0)
 
                     #logger.log(f'read r0[{t2}]')

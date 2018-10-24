@@ -110,7 +110,7 @@ class Model(nn.Module) :
         return self.overtone.pad()
 
     def pad_left_encoder(self):
-        return self.encoder.pad_left - self.frame_advantage * self.encoder.total_scale
+        return self.encoder.pad_left + (self.overtone.cond_pad - self.frame_advantage) * self.encoder.total_scale
 
     def pad_right(self):
         return self.frame_advantage * self.encoder.total_scale
