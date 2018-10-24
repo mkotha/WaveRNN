@@ -29,6 +29,7 @@ parser.add_argument('--scratch', action='store_true')
 parser.add_argument('--model', '-m')
 parser.add_argument('--force', action='store_true', help='skip the version check')
 parser.add_argument('--count', '-c', type=int, help='number of audio files to generate')
+parser.add_argument('--partial', action='append', default=[], help='model to partially load')
 args = parser.parse_args()
 
 if args.float and args.half:
@@ -79,6 +80,9 @@ else:
 
 if use_half:
     model = model.half()
+
+for partial_path in args.partial:
+    model.load_state_dict(torch.load(partial_path), strict=False)
 
 paths = env.Paths(model_name, DATA_PATH)
 

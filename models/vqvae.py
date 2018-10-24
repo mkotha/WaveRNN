@@ -80,8 +80,21 @@ class Model(nn.Module) :
         parameters = sum([np.prod(p.size()) for p in parameters]) / 1_000_000
         logger.log('Trainable Parameters: %.3f million' % parameters)
 
-    def load_state_dict(self, dict):
-        return super().load_state_dict(self.upgrade_state_dict(dict))
+    def load_state_dict(self, dict, strict=True):
+        if strict:
+            return super().load_state_dict(self.upgrade_state_dict(dict))
+        else:
+            my_dict = self.state_dict()
+            new_dict = {}
+            for key, val in dict.items():
+                if key not in my_dict:
+                    logger.log(f'Ignoring {key} because no such parameter exists')
+                elif val.size() != my_dict[key].size():
+                    logger.log(f'Ignoring {key} because of size mismatch')
+                else:
+                    logger.log(f'Loading {key}')
+                    new_dict[key] = val
+            return super().load_state_dict(new_dict, strict=False)
 
     def upgrade_state_dict(self, state_dict):
         out_dict = state_dict.copy()
