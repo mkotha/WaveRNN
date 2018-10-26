@@ -118,7 +118,7 @@ class Model(nn.Module) :
     def total_scale(self):
         return self.encoder.total_scale
 
-    def do_train(self, paths, dataset, optimiser, epochs, batch_size, seq_len, step, lr=1e-4, valid_ids=[], use_half=False):
+    def do_train(self, paths, dataset, optimiser, epochs, batch_size, seq_len, step, lr=1e-4, valid_ids=[], use_half=False, do_clip=False):
 
         if use_half:
             optimiser = apex.fp16_utils.FP16_Optimizer(optimiser, dynamic_loss_scale=True)
@@ -148,8 +148,8 @@ class Model(nn.Module) :
             running_loss_vq = 0.
             running_loss_vqc = 0.
             running_entropy = 0.
-            max_grad = 0.
-            max_grad_name = ""
+            running_max_grad = 0.
+            running_max_grad_name = ""
 
             iters = len(trn_loader)
 
@@ -203,17 +203,35 @@ class Model(nn.Module) :
                 optimiser.zero_grad()
                 if use_half:
                     optimiser.backward(loss)
+                    if do_clip:
+                        raise RuntimeError("clipping in half precision is not implemented yet")
                 else:
                     loss.backward()
-                    # Commenting out gradient clipping because it's very
-                    # expensive.
-                    #
-                    #for name, param in self.named_parameters():
-                    #    param_max_grad = param.grad.data.abs().max()
-                    #    if param_max_grad > max_grad:
-                    #        max_grad = param_max_grad
-                    #        max_grad_name = name
-                    #nn.utils.clip_grad_norm_(self.parameters(), 100, norm_type='inf')
+                    if do_clip:
+                        max_grad = 0
+                        max_grad_name = ""
+                        for name, param in self.named_parameters():
+                            if param.grad is not None:
+                                param_max_grad = param.grad.data.abs().max()
+                                if param_max_grad > max_grad:
+                                    max_grad = param_max_grad
+                                    max_grad_name = name
+                                if 1000000 < param_max_grad:
+                                    logger.log(f'Very large gradient at {name}: {param_max_grad}')
+                        if 100 < max_grad:
+                            for param in self.parameters():
+                                if param.grad is not None:
+                                    if 1000000 < max_grad:
+                                        param.grad.data.zero_()
+                                    else:
+                                        param.grad.data.mul_(100 / max_grad)
+                        if running_max_grad < max_grad:
+                            running_max_grad = max_grad
+                            running_max_grad_name = max_grad_name
+
+                        if 100000 < max_grad:
+                            torch.save(self.state_dict(), "bad_model.pyt")
+                            raise RuntimeError("Aborting due to crazy gradient (model saved to bad_model.pyt)")
                 optimiser.step()
                 running_loss_c += loss_c.item()
                 running_loss_f += loss_f.item()
@@ -232,7 +250,7 @@ class Model(nn.Module) :
 
                 step += 1
                 k = step // 1000
-                logger.status(f'Epoch: {e+1}/{epochs} -- Batch: {i+1}/{iters} -- Loss: c={avg_loss_c:#.4} f={avg_loss_f:#.4} vq={avg_loss_vq:#.4} vqc={avg_loss_vqc:#.4} -- Entropy: {avg_entropy:#.4} -- Grad: {max_grad:#.1} {max_grad_name} Speed: {speed:#.4} steps/sec -- Step: {k}k ')
+                logger.status(f'Epoch: {e+1}/{epochs} -- Batch: {i+1}/{iters} -- Loss: c={avg_loss_c:#.4} f={avg_loss_f:#.4} vq={avg_loss_vq:#.4} vqc={avg_loss_vqc:#.4} -- Entropy: {avg_entropy:#.4} -- Grad: {running_max_grad:#.1} {running_max_grad_name} Speed: {speed:#.4} steps/sec -- Step: {k}k ')
 
             torch.save(self.state_dict(), paths.model_path())
             np.save(paths.step_path(), step)
