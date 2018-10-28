@@ -103,6 +103,14 @@ class Model(nn.Module) :
         out_dict = state_dict.copy()
         return out_dict
 
+    def freeze_encoder(self):
+        for name, param in self.named_parameters():
+            if name.startswith('encoder.') or name.startswith('vq.'):
+                logger.log(f'Freezing {name}')
+                param.requires_grad = False
+            else:
+                logger.log(f'Not freezing {name}')
+
     def pad_left(self):
         return max(self.pad_left_decoder(), self.pad_left_encoder())
 
