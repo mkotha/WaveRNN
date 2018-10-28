@@ -39,7 +39,7 @@ class Model(nn.Module) :
             (1, 4, 1),
             ]
         self.encoder = DownsamplingEncoder(128, encoder_layers)
-        self.frame_advantage = 4
+        self.frame_advantage = 15
         self.num_params()
 
     def forward(self, x, samples):
