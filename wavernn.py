@@ -44,7 +44,7 @@ else:
 
 seq_len = hop_length * 5
 
-model_name = 'vq.40.x_adv15'
+model_name = 'vq.41.xy_adv15'
 
 if platform.node().endswith('.ec2') or platform.node().startswith('ip-'): # Running on EC2
     DATA_PATH = '/home/ubuntu/dataset/lj2'
@@ -69,7 +69,7 @@ print(f'dataset size: {len(dataset)}')
 
 if args.model is None or args.model == 'vqvae':
     model = vqvae.Model(rnn_dims=896, fc_dims=896,
-                  upsample_factors=(4, 4, 4), normalize_vq=True, noise_x=True).cuda()
+                  upsample_factors=(4, 4, 4), normalize_vq=True, noise_x=True, noise_y=True).cuda()
 elif args.model == 'wavernn':
     model = wr.Model(rnn_dims=896, fc_dims=896, pad=2,
                   upsample_factors=(4, 4, 4), feat_dims=80).cuda()
