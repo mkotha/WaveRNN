@@ -44,7 +44,7 @@ else:
 
 seq_len = hop_length * 5
 
-model_name = 'vq.41.xy_adv15'
+model_name = 'vq.42.vctk'
 
 if platform.node().endswith('.ec2') or platform.node().startswith('ip-'): # Running on EC2
     DATA_PATH = '/home/ubuntu/dataset/vctk'
