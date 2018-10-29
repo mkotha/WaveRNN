@@ -18,11 +18,11 @@ import utils.logger as logger
 import random
 
 class Model(nn.Module) :
-    def __init__(self, rnn_dims, fc_dims, upsample_factors, normalize_vq=False,
+    def __init__(self, rnn_dims, fc_dims, global_decoder_cond_dims, upsample_factors, normalize_vq=False,
             noise_x=False, noise_y=False):
         super().__init__()
         self.n_classes = 256
-        self.overtone = Overtone(rnn_dims, fc_dims, 128)
+        self.overtone = Overtone(rnn_dims, fc_dims, 128, global_decoder_cond_dims)
         self.vq = VectorQuant(1, 512, 128, normalize=normalize_vq)
         self.noise_x = noise_x
         self.noise_y = noise_y
@@ -42,7 +42,7 @@ class Model(nn.Module) :
         self.frame_advantage = 15
         self.num_params()
 
-    def forward(self, x, samples):
+    def forward(self, global_decoder_cond, x, samples):
         # x: (N, 768, 3)
         #logger.log(f'x: {x.size()}')
         # samples: (N, 1022)
@@ -56,13 +56,13 @@ class Model(nn.Module) :
 
         # cond: (N, 768, 64)
         #logger.log(f'cond: {cond.size()}')
-        return self.overtone(x, discrete.squeeze(2)), vq_pen.mean(), encoder_pen.mean(), entropy
+        return self.overtone(x, discrete.squeeze(2), global_decoder_cond), vq_pen.mean(), encoder_pen.mean(), entropy
 
     def after_update(self):
         self.overtone.after_update()
         self.vq.after_update()
 
-    def forward_generate(self, samples, deterministic=False, use_half=False, verbose=False):
+    def forward_generate(self, global_decoder_cond, samples, deterministic=False, use_half=False, verbose=False):
         if use_half:
             samples = samples.half()
         # samples: (L)
@@ -74,7 +74,7 @@ class Model(nn.Module) :
             logger.log(f'entropy: {entropy}')
             # cond: (1, L1, 64)
             #logger.log(f'cond: {cond.size()}')
-            output = self.overtone.generate(discrete.squeeze(2), use_half=use_half, verbose=verbose)
+            output = self.overtone.generate(discrete.squeeze(2), global_decoder_cond, use_half=use_half, verbose=verbose)
         self.train()
         return output
 
@@ -126,7 +126,7 @@ class Model(nn.Module) :
     def total_scale(self):
         return self.encoder.total_scale
 
-    def do_train(self, paths, dataset, optimiser, epochs, batch_size, seq_len, step, lr=1e-4, valid_ids=[], use_half=False, do_clip=False):
+    def do_train(self, paths, dataset, optimiser, epochs, batch_size, seq_len, step, lr=1e-4, valid_index=[], use_half=False, do_clip=False):
 
         if use_half:
             optimiser = apex.fp16_utils.FP16_Optimizer(optimiser, dynamic_loss_scale=True)
@@ -147,7 +147,7 @@ class Model(nn.Module) :
 
         for e in range(epochs) :
 
-            trn_loader = DataLoader(dataset, collate_fn=lambda batch: env.collate_samples(pad_left, window, pad_right, batch), batch_size=batch_size,
+            trn_loader = DataLoader(dataset, collate_fn=lambda batch: env.collate_multispeaker_samples(pad_left, window, pad_right, batch), batch_size=batch_size,
                                     num_workers=2, shuffle=True, pin_memory=True)
 
             start = time.time()
@@ -161,8 +161,9 @@ class Model(nn.Module) :
 
             iters = len(trn_loader)
 
-            for i, wave16 in enumerate(trn_loader) :
+            for i, (speaker, wave16) in enumerate(trn_loader) :
 
+                speaker = speaker.cuda()
                 wave16 = wave16.cuda()
 
                 coarse = (wave16 + 2**15) // 256
@@ -201,7 +202,7 @@ class Model(nn.Module) :
                     translated = torch.stack(translated, dim=0)
                 else:
                     translated = noisy_f[:, pad_left-pad_left_encoder:]
-                p_cf, vq_pen, encoder_pen, entropy = self(x, translated)
+                p_cf, vq_pen, encoder_pen, entropy = self(speaker, x, translated)
                 p_c, p_f = p_cf
                 loss_c = criterion(p_c.transpose(1, 2).float(), y_coarse)
                 loss_f = criterion(p_f.transpose(1, 2).float(), y_fine)
@@ -267,19 +268,25 @@ class Model(nn.Module) :
             if k > saved_k + 50:
                 torch.save(self.state_dict(), paths.model_hist_path(step))
                 saved_k = k
-                self.do_generate(paths, step, dataset.path, valid_ids)
+                self.do_generate(paths, step, dataset.path, valid_index)
 
-    def do_generate(self, paths, step, data_path, test_ids, deterministic=False, use_half=False, verbose=False):
+    def do_generate(self, paths, step, data_path, test_index, deterministic=False, use_half=False, verbose=False):
         k = step // 1000
-        gt = [np.load(f'{data_path}/quant/{id}.npy') for id in test_ids]
-        gt = [(x.astype(np.float32) + 0.5) / (2**15 - 0.5) for x in gt]
+        dataset = env.MultispeakerDataset(test_index, data_path)
+        loader = DataLoader(dataset, shuffle=False)
+        data = [x for x in loader]
+        n_points = len(data)
+        gt = [(x[0].float() + 0.5) / (2**15 - 0.5) for speaker, x in data]
         extended = [np.concatenate([np.zeros(self.pad_left_encoder(), dtype=np.float32), x, np.zeros(self.pad_right(), dtype=np.float32)]) for x in gt]
+        speakers = [torch.FloatTensor(speaker[0].float()) for speaker, x in data]
         maxlen = max([len(x) for x in extended])
         aligned = [torch.cat([torch.FloatTensor(x), torch.zeros(maxlen-len(x))]) for x in extended]
         os.makedirs(paths.gen_path(), exist_ok=True)
-        out = self.forward_generate(torch.stack(aligned).cuda(), verbose=verbose, use_half=use_half)
+        out = self.forward_generate(torch.stack(speakers + list(reversed(speakers)), dim=0).cuda(), torch.stack(aligned + aligned, dim=0).cuda(), verbose=verbose, use_half=use_half)
         logger.log(f'out: {out.size()}')
         for i, x in enumerate(gt) :
+            librosa.output.write_wav(f'{paths.gen_path()}/{k}k_steps_{i}_target.wav', x.cpu().numpy(), sr=sample_rate)
             audio = out[i][:len(x)].cpu().numpy()
-            librosa.output.write_wav(f'{paths.gen_path()}/{k}k_steps_{i}_target.wav', x, sr=sample_rate)
             librosa.output.write_wav(f'{paths.gen_path()}/{k}k_steps_{i}_generated.wav', audio, sr=sample_rate)
+            audio_tr = out[n_points+i][:len(x)].cpu().numpy()
+            librosa.output.write_wav(f'{paths.gen_path()}/{k}k_steps_{i}_transfered.wav', audio_tr, sr=sample_rate)

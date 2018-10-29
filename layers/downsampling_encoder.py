@@ -42,7 +42,9 @@ class DownsamplingEncoder(nn.Module):
         self.final_conv_0 = nn.Conv1d(channels, channels, 1)
         self.final_conv_0.bias.data.zero_()
         self.final_conv_1 = nn.Conv1d(channels, channels, 1)
-        self.final_conv_1.bias.data.zero_()
+        # We don't set the bias to 0 here because otherwise the initial model
+        # would produce the 0 vector when the input is 0, and it will make
+        # the vq layer unhappy.
 
     def forward(self, samples):
         x = samples.unsqueeze(1)

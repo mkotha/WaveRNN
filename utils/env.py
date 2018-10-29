@@ -47,6 +47,33 @@ class AudiobookDataset(Dataset):
     def __len__(self):
         return len(self.metadata)
 
+class MultispeakerDataset(Dataset):
+    def __init__(self, index, path):
+        self.path = path
+        self.index = index
+        self.all_files = [(i, name) for (i, speaker) in enumerate(index) for name in speaker]
+
+    def __getitem__(self, index):
+        speaker_id, name = self.all_files[index]
+        speaker_onehot = (np.arange(len(self.index)) == speaker_id).astype(np.long)
+        audio = np.load(f'{self.path}/{speaker_id}/{name}.npy')
+        return speaker_onehot, audio
+
+    def __len__(self):
+        return len(self.all_files)
+
+    def num_speakers(self):
+        return len(self.index)
+
+def collate_multispeaker_samples(left_pad, window, right_pad, batch):
+    samples = [x[1] for x in batch]
+    speakers_onehot = torch.FloatTensor([x[0] for x in batch])
+    max_offsets = [x.shape[-1] - window for x in samples]
+    offsets = [np.random.randint(0, offset) for offset in max_offsets]
+
+    wave16 = [np.concatenate([np.zeros(left_pad, dtype=np.int16), x, np.zeros(right_pad, dtype=np.int16)])[offsets[i]:offsets[i] + left_pad + window + right_pad] for i, x in enumerate(samples)]
+    return torch.FloatTensor(speakers_onehot), torch.LongTensor(np.stack(wave16).astype(np.int64))
+
 def collate_samples(left_pad, window, right_pad, batch):
     #print(f'collate: window={window}')
     samples = [x[1] for x in batch]
@@ -88,3 +115,15 @@ def restore(path, model):
 
     step_path = re.sub(r'\.pyt', '_step.npy', path)
     return np.load(step_path)
+
+if __name__ == '__main__':
+    import pickle
+    from torch.utils.data import DataLoader
+    DATA_PATH = 'vctk'
+    with open(f'{DATA_PATH}/index.pkl', 'rb') as f:
+        index = pickle.load(f)
+    dataset = MultispeakerDataset(index, DATA_PATH)
+    loader = DataLoader(dataset, batch_size=1)
+    for x in loader:
+        speaker_onehot, audio = x
+        #print(f'x: {x}')

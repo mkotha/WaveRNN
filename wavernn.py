@@ -47,28 +47,26 @@ seq_len = hop_length * 5
 model_name = 'vq.41.xy_adv15'
 
 if platform.node().endswith('.ec2') or platform.node().startswith('ip-'): # Running on EC2
-    DATA_PATH = '/home/ubuntu/dataset/lj2'
+    DATA_PATH = '/home/ubuntu/dataset/vctk'
     subprocess.call(['./preload.sh', DATA_PATH])
 else:
-    DATA_PATH = '/mnt/backup/dataset/lj2'
+    DATA_PATH = '/mnt/backup/dataset/vctk'
 
-with open(f'{DATA_PATH}/dataset_ids.pkl', 'rb') as f:
-    dataset_ids = pickle.load(f)
+with open(f'{DATA_PATH}/index.pkl', 'rb') as f:
+    index = pickle.load(f)
 
-#test_ids = dataset_ids[-50:]
-#dataset_ids = dataset_ids[:-50]
-test_ids = dataset_ids[-3:] + dataset_ids[:3]
-dataset_ids = dataset_ids[:-3]
+test_index = [x[-1:] if i < 6 else [] for i, x in enumerate(index)]
+train_index = [x[:-1] if i < 3 else x for i, x in enumerate(index)]
 
 if args.count is not None:
     test_ids = test_ids[:args.count]
 
-dataset = env.AudiobookDataset(dataset_ids, DATA_PATH)
+dataset = env.MultispeakerDataset(train_index, DATA_PATH)
 
 print(f'dataset size: {len(dataset)}')
 
 if args.model is None or args.model == 'vqvae':
-    model = vqvae.Model(rnn_dims=896, fc_dims=896,
+    model = vqvae.Model(rnn_dims=896, fc_dims=896, global_decoder_cond_dims=dataset.num_speakers(),
                   upsample_factors=(4, 4, 4), normalize_vq=True, noise_x=True, noise_y=True).cuda()
 elif args.model == 'wavernn':
     model = wr.Model(rnn_dims=896, fc_dims=896, pad=2,
@@ -108,10 +106,10 @@ else:
 optimiser = optim.Adam(model.parameters())
 
 if args.generate:
-    model.do_generate(paths, step, DATA_PATH, test_ids, use_half=use_half, verbose=True)#, deterministic=True)
+    model.do_generate(paths, step, DATA_PATH, test_index, use_half=use_half, verbose=True)#, deterministic=True)
 else:
     logger.set_logfile(paths.logfile_path())
     logger.log('------------------------------------------------------------')
     logger.log('-- New training session starts here ------------------------')
     logger.log(time.strftime('%c UTC', time.gmtime()))
-    model.do_train(paths, dataset, optimiser, epochs=1000, batch_size=16, seq_len=seq_len, step=step, lr=1e-4, use_half=use_half, valid_ids=test_ids)
+    model.do_train(paths, dataset, optimiser, epochs=1000, batch_size=16, seq_len=seq_len, step=step, lr=1e-4, use_half=use_half, valid_index=test_index)
