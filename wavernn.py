@@ -20,6 +20,8 @@ import utils.logger as logger
 import time
 import subprocess
 
+import config
+
 parser = argparse.ArgumentParser(description='Train or run some neural net')
 parser.add_argument('--generate', '-g', action='store_true')
 parser.add_argument('--float', action='store_true')
@@ -46,13 +48,7 @@ seq_len = hop_length * 5
 
 model_name = 'vq.42.vctk'
 
-if platform.node().endswith('.ec2') or platform.node().startswith('ip-'): # Running on EC2
-    DATA_PATH = '/home/ubuntu/dataset/vctk'
-    subprocess.call(['./preload.sh', DATA_PATH])
-else:
-    DATA_PATH = '/mnt/backup/dataset/vctk'
-
-with open(f'{DATA_PATH}/index.pkl', 'rb') as f:
+with open(f'{config.data_path}/index.pkl', 'rb') as f:
     index = pickle.load(f)
 
 test_index = [x[-1:] if i < 6 else [] for i, x in enumerate(index)]
@@ -61,7 +57,7 @@ train_index = [x[:-1] if i < 3 else x for i, x in enumerate(index)]
 if args.count is not None:
     test_ids = test_ids[:args.count]
 
-dataset = env.MultispeakerDataset(train_index, DATA_PATH)
+dataset = env.MultispeakerDataset(train_index, config.data_path)
 
 print(f'dataset size: {len(dataset)}')
 
@@ -82,7 +78,7 @@ if use_half:
 for partial_path in args.partial:
     model.load_state_dict(torch.load(partial_path), strict=False)
 
-paths = env.Paths(model_name, DATA_PATH)
+paths = env.Paths(model_name, config.data_path)
 
 if args.scratch or args.load == None and not os.path.exists(paths.model_path()):
     # Start from scratch
@@ -95,7 +91,7 @@ else:
         if prev_model_basename != model_basename and not args.force:
             sys.exit(f'refusing to load {args.load} because its basename ({prev_model_basename}) is not {model_basename}')
         if args.generate:
-            paths = env.Paths(prev_model_name, DATA_PATH)
+            paths = env.Paths(prev_model_name, config.data_path)
         prev_path = args.load
     else:
         prev_path = paths.model_path()
@@ -106,7 +102,7 @@ else:
 optimiser = optim.Adam(model.parameters())
 
 if args.generate:
-    model.do_generate(paths, step, DATA_PATH, test_index, use_half=use_half, verbose=True)#, deterministic=True)
+    model.do_generate(paths, step, config.data_path, test_index, use_half=use_half, verbose=True)#, deterministic=True)
 else:
     logger.set_logfile(paths.logfile_path())
     logger.log('------------------------------------------------------------')
