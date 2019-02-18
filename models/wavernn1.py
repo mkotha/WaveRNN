@@ -48,7 +48,7 @@ class Model(nn.Module) :
     def load_state_dict(self, dict):
         return super().load_state_dict(upgrade_state_dict(dict))
 
-    def do_train(self, paths, dataset, optimiser, epochs, batch_size, seq_len, step, lr=1e-4, valid_ids=[], use_half=False):
+    def do_train(self, paths, dataset, optimiser, epochs, batch_size, step, lr=1e-4, valid_ids=[], use_half=False):
         if use_half:
             optimiser = apex.fp16_utils.FP16_Optimizer(optimiser, dynamic_loss_scale=True)
         for p in optimiser.param_groups : p['lr'] = lr

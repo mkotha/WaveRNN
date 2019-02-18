@@ -43,7 +43,7 @@ class Model(nn.Module) :
         parameters = sum([np.prod(p.size()) for p in parameters]) / 1_000_000
         print('Trainable Parameters: %.3f million' % parameters)
 
-    def do_train(self, paths, dataset, optimiser, epochs, batch_size, seq_len, step, lr=1e-4, valid_ids=[], use_half=False):
+    def do_train(self, paths, dataset, optimiser, epochs, batch_size, step, lr=1e-4, valid_ids=[], use_half=False):
 
         if use_half:
             optimiser = apex.fp16_utils.FP16_Optimizer(optimiser, dynamic_loss_scale=True)

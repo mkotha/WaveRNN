@@ -126,7 +126,7 @@ class Model(nn.Module) :
     def total_scale(self):
         return self.encoder.total_scale
 
-    def do_train(self, paths, dataset, optimiser, epochs, batch_size, seq_len, step, lr=1e-4, valid_index=[], use_half=False, do_clip=False):
+    def do_train(self, paths, dataset, optimiser, epochs, batch_size, step, lr=1e-4, valid_index=[], use_half=False, do_clip=False):
 
         if use_half:
             optimiser = apex.fp16_utils.FP16_Optimizer(optimiser, dynamic_loss_scale=True)

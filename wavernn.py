@@ -7,7 +7,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 from utils import *
-from utils.dsp import *
 import sys
 import models.nocond as nc
 import models.vqvae as vqvae
@@ -43,8 +42,6 @@ elif args.half:
     use_half = True
 else:
     use_half = False
-
-seq_len = hop_length * 5
 
 model_name = 'vq.42.vctk'
 
@@ -108,4 +105,4 @@ else:
     logger.log('------------------------------------------------------------')
     logger.log('-- New training session starts here ------------------------')
     logger.log(time.strftime('%c UTC', time.gmtime()))
-    model.do_train(paths, dataset, optimiser, epochs=1000, batch_size=16, seq_len=seq_len, step=step, lr=1e-4, use_half=use_half, valid_index=test_index)
+    model.do_train(paths, dataset, optimiser, epochs=1000, batch_size=16, step=step, lr=1e-4, use_half=use_half, valid_index=test_index)
