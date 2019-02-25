@@ -29,7 +29,7 @@ parser.add_argument('--load', '-l')
 parser.add_argument('--scratch', action='store_true')
 parser.add_argument('--model', '-m')
 parser.add_argument('--force', action='store_true', help='skip the version check')
-parser.add_argument('--count', '-c', type=int, help='number of audio files to generate')
+parser.add_argument('--count', '-c', type=int, default=3, help='size of the test set')
 parser.add_argument('--partial', action='append', default=[], help='model to partially load')
 args = parser.parse_args()
 
@@ -45,29 +45,40 @@ else:
 
 model_name = 'vq.42.vctk'
 
-with open(f'{config.data_path}/index.pkl', 'rb') as f:
-    index = pickle.load(f)
+if args.model is None or args.model == 'vqvae':
+    model_fn = lambda dataset: vqvae.Model(rnn_dims=896, fc_dims=896, global_decoder_cond_dims=dataset.num_speakers(),
+                  upsample_factors=(4, 4, 4), normalize_vq=True, noise_x=True, noise_y=True).cuda()
+    dataset_type = 'multi'
+elif args.model == 'wavernn':
+    model_fn = lambda dataset: wr.Model(rnn_dims=896, fc_dims=896, pad=2,
+                  upsample_factors=(4, 4, 4), feat_dims=80).cuda()
+    dataset_type = 'single'
+elif args.model == 'nc':
+    model_fn = lambda dataset: nc.Model(rnn_dims=896, fc_dims=896).cuda()
+    dataset_type = 'single'
+else:
+    sys.exit(f'Unknown model: {args.model}')
 
-test_index = [x[-1:] if i < 6 else [] for i, x in enumerate(index)]
-train_index = [x[:-1] if i < 3 else x for i, x in enumerate(index)]
-
-if args.count is not None:
-    test_ids = test_ids[:args.count]
-
-dataset = env.MultispeakerDataset(train_index, config.data_path)
+if dataset_type == 'multi':
+    data_path = config.multi_speaker_data_path
+    with open(f'{data_path}/index.pkl', 'rb') as f:
+        index = pickle.load(f)
+    test_index = [x[-1:] if i < 2 * args.count else [] for i, x in enumerate(index)]
+    train_index = [x[:-1] if i < args.count else x for i, x in enumerate(index)]
+    dataset = env.MultispeakerDataset(train_index, data_path)
+elif dataset_type == 'single':
+    data_path = config.single_speaker_data_path
+    with open(f'{data_path}/dataset_ids.pkl', 'rb') as f:
+        index = pickle.load(f)
+    test_index = index[-args.count:] + index[:args.count]
+    train_index = index[:-args.count]
+    dataset = env.AudiobookDataset(train_index, data_path)
+else:
+    raise RuntimeError('bad dataset type')
 
 print(f'dataset size: {len(dataset)}')
 
-if args.model is None or args.model == 'vqvae':
-    model = vqvae.Model(rnn_dims=896, fc_dims=896, global_decoder_cond_dims=dataset.num_speakers(),
-                  upsample_factors=(4, 4, 4), normalize_vq=True, noise_x=True, noise_y=True).cuda()
-elif args.model == 'wavernn':
-    model = wr.Model(rnn_dims=896, fc_dims=896, pad=2,
-                  upsample_factors=(4, 4, 4), feat_dims=80).cuda()
-elif args.model == 'nc':
-    model = nc.Model(rnn_dims=896, fc_dims=896).cuda()
-else:
-    sys.exit(f'Unknown model: {args.model}')
+model = model_fn(dataset)
 
 if use_half:
     model = model.half()
@@ -75,7 +86,7 @@ if use_half:
 for partial_path in args.partial:
     model.load_state_dict(torch.load(partial_path), strict=False)
 
-paths = env.Paths(model_name, config.data_path)
+paths = env.Paths(model_name, data_path)
 
 if args.scratch or args.load == None and not os.path.exists(paths.model_path()):
     # Start from scratch
@@ -88,7 +99,7 @@ else:
         if prev_model_basename != model_basename and not args.force:
             sys.exit(f'refusing to load {args.load} because its basename ({prev_model_basename}) is not {model_basename}')
         if args.generate:
-            paths = env.Paths(prev_model_name, config.data_path)
+            paths = env.Paths(prev_model_name, data_path)
         prev_path = args.load
     else:
         prev_path = paths.model_path()
@@ -99,7 +110,7 @@ else:
 optimiser = optim.Adam(model.parameters())
 
 if args.generate:
-    model.do_generate(paths, step, config.data_path, test_index, use_half=use_half, verbose=True)#, deterministic=True)
+    model.do_generate(paths, step, data_path, test_index, use_half=use_half, verbose=True)#, deterministic=True)
 else:
     logger.set_logfile(paths.logfile_path())
     logger.log('------------------------------------------------------------')
