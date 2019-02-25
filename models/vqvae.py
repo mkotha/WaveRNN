@@ -9,7 +9,6 @@ import torch.nn.functional as F
 from utils.dsp import *
 import sys
 import time
-import apex
 from layers.overtone import Overtone
 from layers.vector_quant import VectorQuant
 from layers.downsampling_encoder import DownsamplingEncoder
@@ -129,6 +128,7 @@ class Model(nn.Module) :
     def do_train(self, paths, dataset, optimiser, epochs, batch_size, step, lr=1e-4, valid_index=[], use_half=False, do_clip=False):
 
         if use_half:
+            import apex
             optimiser = apex.fp16_utils.FP16_Optimizer(optimiser, dynamic_loss_scale=True)
         for p in optimiser.param_groups : p['lr'] = lr
         criterion = nn.NLLLoss().cuda()
