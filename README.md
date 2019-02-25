@@ -54,7 +54,7 @@ You can skip this section if you don't need a multi-speaker dataset.
 
 You can skip this section if you don't need a single-speaker dataset.
 
-1. Download and uncpress [the LJ speech dataset](
+1. Download and uncompress [the LJ speech dataset](
   https://keithito.com/LJ-Speech-Dataset/).
 2. `python preprocess16.py /path/to/dataset/LJSpeech-1.1/wavs
   /path/to/output/directory`
