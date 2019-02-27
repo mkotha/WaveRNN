@@ -45,7 +45,7 @@ else:
 
 model_type = args.model or 'vqvae'
 
-model_name = f'{model_type}.42.vctk'
+model_name = f'{model_type}.43.upconv'
 
 if model_type == 'vqvae':
     model_fn = lambda dataset: vqvae.Model(rnn_dims=896, fc_dims=896, global_decoder_cond_dims=dataset.num_speakers(),
