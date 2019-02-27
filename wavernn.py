@@ -43,21 +43,23 @@ elif args.half:
 else:
     use_half = False
 
-model_name = 'vq.42.vctk'
+model_type = args.model or 'vqvae'
 
-if args.model is None or args.model == 'vqvae':
+model_name = f'{model_type}.42.vctk'
+
+if model_type == 'vqvae':
     model_fn = lambda dataset: vqvae.Model(rnn_dims=896, fc_dims=896, global_decoder_cond_dims=dataset.num_speakers(),
                   upsample_factors=(4, 4, 4), normalize_vq=True, noise_x=True, noise_y=True).cuda()
     dataset_type = 'multi'
-elif args.model == 'wavernn':
+elif model_type == 'wavernn':
     model_fn = lambda dataset: wr.Model(rnn_dims=896, fc_dims=896, pad=2,
                   upsample_factors=(4, 4, 4), feat_dims=80).cuda()
     dataset_type = 'single'
-elif args.model == 'nc':
+elif model_type == 'nc':
     model_fn = lambda dataset: nc.Model(rnn_dims=896, fc_dims=896).cuda()
     dataset_type = 'single'
 else:
-    sys.exit(f'Unknown model: {args.model}')
+    sys.exit(f'Unknown model: {model_type}')
 
 if dataset_type == 'multi':
     data_path = config.multi_speaker_data_path
