@@ -20,7 +20,8 @@ class Conv2(nn.Module):
 
         ksz = 4
         self.out_channels = out_channels
-        self.w_cond = nn.Linear(global_cond_channels, 2 * out_channels, bias=False)
+        if 0 < global_cond_channels:
+            self.w_cond = nn.Linear(global_cond_channels, 2 * out_channels, bias=False)
         self.conv_wide = nn.Conv1d(in_channels, 2 * out_channels, ksz, stride=2)
         wsize = 2.967 / math.sqrt(ksz * in_channels)
         self.conv_wide.weight.data.uniform_(-wsize, wsize)
@@ -28,7 +29,10 @@ class Conv2(nn.Module):
 
     def forward(self, x, global_cond):
         x1 = self.conv_wide(x.transpose(1, 2)).transpose(1, 2)
-        x2 = self.w_cond(global_cond).unsqueeze(1).expand(-1, x1.size(1), -1)
+        if global_cond:
+            x2 = self.w_cond(global_cond).unsqueeze(1).expand(-1, x1.size(1), -1)
+        else:
+            x2 = torch.zeros_like(x1)
         a, b = (x1 + x2).split(self.out_channels, dim=2)
         return torch.sigmoid(a) * torch.tanh(b)
 
@@ -57,7 +61,9 @@ class RNN4(nn.Module):
         self.warmup_steps = warmup_steps
 
     def forward(self, x, global_cond):
-        x1, h_n = self.gru(torch.cat([x, global_cond.unsqueeze(1).expand(-1, x.size(1), -1)], dim=2))
+        if global_cond:
+            global_cond = global_cond.unsqueeze(1).expand(-1, x.size(1), -1)
+        x1, h_n = self.gru(torch.cat(filter_none([x, global_cond]), dim=2))
         y = self.tconv(x1[:, self.warmup_steps:].transpose(1, 2)).transpose(1, 2)
         return y, h_n.squeeze(0)
 
@@ -76,7 +82,7 @@ class RNN4Cell(nn.Module):
         self.tconv = tconv
 
     def forward(self, x, global_cond, h):
-        h1 = self.gru_cell(torch.cat([x, global_cond], dim=1), h)
+        h1 = self.gru_cell(torch.cat(filter_none([x, global_cond]), dim=1), h)
         y = self.tconv(h1.unsqueeze(2)).transpose(1, 2)
         return y, h1
 
@@ -116,7 +122,9 @@ class Overtone(nn.Module):
         r0 = self.rnn0(torch.cat(filter_none([c2, cond]), dim=2), global_cond)[0]
         r1 = self.rnn1(torch.cat([c1[:, (self.delay_r0 - self.delay_c1) // 16:], r0], dim=2), global_cond)[0]
         r2 = self.rnn2(torch.cat([c0[:, (self.delay_r1 - self.delay_c0) // 4:], r1], dim=2), global_cond)[0]
-        cond_w = torch.cat([r2, global_cond.unsqueeze(1).expand(-1, r2.size(1), -1)], dim=2)
+        if global_cond:
+            global_cond = global_cond.unsqueeze(1).expand(-1, r2.size(1), -1)
+        cond_w = torch.cat(filter_none([r2, global_cond]), dim=2)
         p_c, p_f, _ = self.wavernn(x[:, self.delay_r2:], cond_w, None, None, None)
         return p_c[:, self.warmup_steps:], p_f[:, self.warmup_steps:]
 
@@ -144,7 +152,11 @@ class Overtone(nn.Module):
         r0, h0 = self.rnn0(torch.cat(filter_none([c2.repeat(1, 85, 1), pad_cond]), dim=2), global_cond)
         r1, h1 = self.rnn1(torch.cat([c1.repeat(1, 9, 1)[:, :84], r0], dim=2), global_cond)
         r2, h2 = self.rnn2(torch.cat([c0.repeat(1, 8, 1), r1], dim=2), global_cond)
-        h3 = self.wavernn(std_tensor.new_zeros(n, 64, 3), torch.cat([r2, global_cond.unsqueeze(1).expand(-1, r2.size(1), -1)], dim=2))[2]
+        if global_cond:
+            global_cond_1 = global_cond.unsqueeze(1).expand(-1, r2.size(1), -1)
+        else:
+            global_cond_1 = None
+        h3 = self.wavernn(std_tensor.new_zeros(n, 64, 3), torch.cat(filter_none([r2, global_cond_1]), dim=2))[2]
 
         # Create cells
         cell0 = self.rnn0.to_cell()
@@ -205,7 +217,7 @@ class Overtone(nn.Module):
                 r2, h2 = cell2(torch.cat([c0[:, -ct1-1], r1[:, t1]], dim=1), global_cond, h2)
 
             #logger.log(f'read r2[{t0}]')
-            wcond = torch.cat([r2[:, t0], global_cond], dim=1)
+            wcond = torch.cat(filter_none([r2[:, t0], global_cond]), dim=1)
 
             x = torch.stack([c_val, f_val, zero], dim=1)
             o_c = wcell.forward_c(x, wcond, None, None, h3)

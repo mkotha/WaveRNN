@@ -20,11 +20,11 @@ class Model(nn.Module) :
     def __init__(self, rnn_dims, fc_dims):
         super().__init__()
         self.n_classes = 256
-        self.overtone = Overtone(rnn_dims, fc_dims, 0)
+        self.overtone = Overtone(rnn_dims, fc_dims, 0, 0)
         self.num_params()
 
     def forward(self, x):
-        p_c, p_f = self.overtone(x, None)
+        p_c, p_f = self.overtone(x, None, None)
         return p_c, p_f
 
     def after_update(self):
@@ -33,7 +33,7 @@ class Model(nn.Module) :
     def generate(self, batch_size, seq_len, deterministic=False):
         self.eval()
         with torch.no_grad() :
-            output = self.overtone.generate(None, seq_len=seq_len, n=batch_size)
+            output = self.overtone.generate(None, None, seq_len=seq_len, n=batch_size)
         self.train()
         return output
 
@@ -42,7 +42,7 @@ class Model(nn.Module) :
         parameters = sum([np.prod(p.size()) for p in parameters]) / 1_000_000
         print('Trainable Parameters: %.3f million' % parameters)
 
-    def do_train(self, paths, dataset, optimiser, epochs, batch_size, step, lr=1e-4, valid_ids=[], use_half=False):
+    def do_train(self, paths, dataset, optimiser, epochs, batch_size, step, lr=1e-4, valid_index=[], use_half=False):
 
         if use_half:
             import apex
@@ -67,9 +67,16 @@ class Model(nn.Module) :
 
             iters = len(trn_loader)
 
-            for i, (coarse, fine, coarse_f, fine_f) in enumerate(trn_loader) :
+            for i, wave16 in enumerate(trn_loader) :
 
-                coarse, fine, coarse_f, fine_f = coarse.cuda(), fine.cuda(), coarse_f.cuda(), fine_f.cuda()
+                wave16 = wave16.cuda()
+
+                coarse = (wave16 + 2**15) // 256
+                fine = (wave16 + 2**15) % 256
+
+                coarse_f = coarse.float() / 127.5 - 1.
+                fine_f = fine.float() / 127.5 - 1.
+
                 if use_half:
                     coarse_f = coarse_f.half()
                     fine_f = fine_f.half()
@@ -119,13 +126,13 @@ class Model(nn.Module) :
             if k > saved_k + 50:
                 torch.save(self.state_dict(), paths.model_hist_path(step))
                 saved_k = k
-                self.do_generate(paths, step, dataset.path, valid_ids)
+                self.do_generate(paths, step, dataset.path, valid_index)
                 logger.log('done generation')
 
-    def do_generate(self, paths, step, data_path, test_ids, deterministic=False, use_half=False, verbose=False):
-        out = self.generate(len(test_ids), 100000)
+    def do_generate(self, paths, step, data_path, test_index, deterministic=False, use_half=False, verbose=False):
+        out = self.generate(len(test_index), 100000)
         k = step // 1000
         os.makedirs(paths.gen_path(), exist_ok=True)
-        for i in range(len(test_ids)) :
+        for i in range(len(test_index)) :
             audio = out[i].cpu().numpy()
             librosa.output.write_wav(f'{paths.gen_path()}/{k}k_steps_{i}_generated.wav', audio, sr=sample_rate)
