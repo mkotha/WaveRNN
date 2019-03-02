@@ -12,6 +12,8 @@ provided:
 * An unconditioned WaveRNN. Trained on a single-speaker dataset, it can generate
   random speech.
 
+[Audio samples](https://mkotha.github.io/WaveRNN/).
+
 It has been tested with the following datasets.
 
 Multispeaker datasets:
