@@ -289,4 +289,4 @@ class Model(nn.Module) :
             audio = out[i][:len(x)].cpu().numpy()
             librosa.output.write_wav(f'{paths.gen_path()}/{k}k_steps_{i}_generated.wav', audio, sr=sample_rate)
             audio_tr = out[n_points+i][:len(x)].cpu().numpy()
-            librosa.output.write_wav(f'{paths.gen_path()}/{k}k_steps_{i}_transfered.wav', audio_tr, sr=sample_rate)
+            librosa.output.write_wav(f'{paths.gen_path()}/{k}k_steps_{i}_transferred.wav', audio_tr, sr=sample_rate)
