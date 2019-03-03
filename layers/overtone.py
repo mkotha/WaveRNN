@@ -29,7 +29,7 @@ class Conv2(nn.Module):
 
     def forward(self, x, global_cond):
         x1 = self.conv_wide(x.transpose(1, 2)).transpose(1, 2)
-        if global_cond:
+        if global_cond is not None:
             x2 = self.w_cond(global_cond).unsqueeze(1).expand(-1, x1.size(1), -1)
         else:
             x2 = torch.zeros_like(x1)
@@ -61,7 +61,7 @@ class RNN4(nn.Module):
         self.warmup_steps = warmup_steps
 
     def forward(self, x, global_cond):
-        if global_cond:
+        if global_cond is not None:
             global_cond = global_cond.unsqueeze(1).expand(-1, x.size(1), -1)
         x1, h_n = self.gru(torch.cat(filter_none([x, global_cond]), dim=2))
         y = self.tconv(x1[:, self.warmup_steps:].transpose(1, 2)).transpose(1, 2)
@@ -122,7 +122,7 @@ class Overtone(nn.Module):
         r0 = self.rnn0(torch.cat(filter_none([c2, cond]), dim=2), global_cond)[0]
         r1 = self.rnn1(torch.cat([c1[:, (self.delay_r0 - self.delay_c1) // 16:], r0], dim=2), global_cond)[0]
         r2 = self.rnn2(torch.cat([c0[:, (self.delay_r1 - self.delay_c0) // 4:], r1], dim=2), global_cond)[0]
-        if global_cond:
+        if global_cond is not None:
             global_cond = global_cond.unsqueeze(1).expand(-1, r2.size(1), -1)
         cond_w = torch.cat(filter_none([r2, global_cond]), dim=2)
         p_c, p_f, _ = self.wavernn(x[:, self.delay_r2:], cond_w, None, None, None)
@@ -152,7 +152,7 @@ class Overtone(nn.Module):
         r0, h0 = self.rnn0(torch.cat(filter_none([c2.repeat(1, 85, 1), pad_cond]), dim=2), global_cond)
         r1, h1 = self.rnn1(torch.cat([c1.repeat(1, 9, 1)[:, :84], r0], dim=2), global_cond)
         r2, h2 = self.rnn2(torch.cat([c0.repeat(1, 8, 1), r1], dim=2), global_cond)
-        if global_cond:
+        if global_cond is not None:
             global_cond_1 = global_cond.unsqueeze(1).expand(-1, r2.size(1), -1)
         else:
             global_cond_1 = None
