@@ -261,6 +261,7 @@ class Model(nn.Module) :
                 k = step // 1000
                 logger.status(f'Epoch: {e+1}/{epochs} -- Batch: {i+1}/{iters} -- Loss: c={avg_loss_c:#.4} f={avg_loss_f:#.4} vq={avg_loss_vq:#.4} vqc={avg_loss_vqc:#.4} -- Entropy: {avg_entropy:#.4} -- Grad: {running_max_grad:#.1} {running_max_grad_name} Speed: {speed:#.4} steps/sec -- Step: {k}k ')
 
+            os.makedirs(paths.checkpoint_dir, exist_ok=True)
             torch.save(self.state_dict(), paths.model_path())
             np.save(paths.step_path(), step)
             logger.log_current_status()
